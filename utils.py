@@ -9,6 +9,31 @@ class MessageType(bytes,enum.Enum):
 
 
 
+class ClientApi():
+    REGISTER_RESPONSE = "register_response"
+    GET_MESSAGES_RESPONSE = "get_messages_response"
+    GET_ACTIVE_USERS_REPONSE = "get_active_users_reponse"
+    SEND_MESSAGE_RESPONSE = "send_message_response"
+    RECEIVE_MESSAGE_FROM_ANOTHER_CLIENT = "receive_message_from_another_client"
+
+class ServerApi():
+        REGISTER = "register"
+        GET_MESSAGES = "get_messages"
+        GET_ACTIVE_USERS = "get_active_users"
+        SEND_MESSAGE = "send_message"
+        USER_QUIT = "user_quit"
+
+
+class NotificationApi():
+    RECEIVE_MESSAGE = "recevive_message"
+    SOMEONE_DISCONNECTED = "SOMEONE_DISCONNECTED"
+
+
+
+
+
+
+
 class UserData():
 
     def __init__(self) -> None:
