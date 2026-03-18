@@ -1,4 +1,5 @@
 import _thread
+from ast import Continue
 import struct
 import time
 import random
@@ -21,11 +22,12 @@ class UsersController:
 
     def __init__(self) -> None:
 
-        self.active_users = {}
+        # self.active_users = {}
         self.users_sockets:list["UserSocket"] = []
 
         
         self.api = {
+
         s.REGISTER:self.register,
         s.GET_ACTIVE_USERS:self.get_active_users,
         s.SEND_MESSAGE:self.send_message,
@@ -49,18 +51,22 @@ class UsersController:
 
     def _del_user_socket(self,usersocket:'UserSocket'):
         current_username  = usersocket.user_data.username
-
-        i = 0
-        for obj in self.users_sockets:
+        for index,obj in enumerate( self.users_sockets,0):
             username = obj.user_data.username
 
             if current_username == username:
-                self.users_sockets.pop(i)
+                self.users_sockets.pop(index)
                 break
 
-            i += 1
+        # self.users_sockets.append(usersocket)
 
-        self.users_sockets.append(usersocket)
+    def _get_all_socket_usernames(self):
+        usernames = []
+        for obj in self.users_sockets:
+            username = obj.user_data.username
+            usernames.append(username)
+
+        return usernames
 
 
 
@@ -68,16 +74,14 @@ class UsersController:
     def register(self,usersocket:'UserSocket',json_data):
 
         username = json_data["username"]
-        response = Response()
 
-        if username in self.active_users:
+        if username in self._get_all_socket_usernames():
             usersocket.new_response({
                     'message': 'Name is used',
                     'success':False,
                     'type':c.REGISTER_RESPONSE
                     })
             return
-        self.active_users[username] = {}
 
         usersocket.new_response({
                 'message': 'You are registered',
@@ -91,40 +95,10 @@ class UsersController:
         self._add_user_socket(usersocket)
         
 
-    # def get_messages(self,usersocket:'UserSocket',json_data):
-    #     username:str = json_data["username"]
-    #
-    #     if username == None:
-    #         return
-    #
-    #     if username  not in self.users_inbox:
-    #
-    #         usersocket.new_response({
-    #             'message':'Your username not registed lol?',
-    #             'success':False,
-    #             'type':c.GET_MESSAGES_RESPONSE
-    #             })
-    #         return
-    #
-    #     if len( self.users_inbox[username].keys() ) <= 0:
-    #         usersocket.new_response({
-    #             'message': "You have zero message",
-    #             'success':True,
-    #             'type':c.GET_MESSAGES_RESPONSE
-    #             })
-    #         return
-    #
-    #     usersocket.new_response({
-    #
-    #         'success':True,
-    #         'data':self.users_inbox[username],
-    #         'type':c.GET_MESSAGES_RESPONSE
-    #         })
-    #     return
 
     def get_active_users(self,usersocket:'UserSocket',json_data):
         username:str = json_data["username"]
-        active_users = list(self.active_users.keys())
+        active_users = self._get_all_socket_usernames()
         active_users = [user for user in active_users if user != username]
 
         if len(active_users) <= 0:
@@ -153,11 +127,6 @@ class UsersController:
         message = json_data.get("message")
 
 
-        # if from_user not in user_inbox.keys():
-        #     user_inbox[from_user] = []
-        #     pass
-        #
-        # user_inbox[from_user].append(message)
 
         usersocket.new_response({
             "message":"Message sent",
@@ -172,14 +141,8 @@ class UsersController:
         
     def user_quit(self,usersocket:'UserSocket'):
         username = usersocket.user_data.username
-
-        if username in self.active_users:
-            del self.active_users[username]
-            print(f"User {username} quits")
-
-        print(self.active_users)
+        print(f"User {username} quits")
         self._del_user_socket(usersocket)
-
         pass
         
 
@@ -194,10 +157,14 @@ class UsersController:
         self.api[type_d](usersocket,json_data)
 
 
-    def notify_clients(self,data_type,data_json,who_ignore = None):
+    def notify_clients(self,data_json,who_ignore = None):
         for user_socket in self.users_sockets:
-            self.users_sockets
-            pass
+            username = user_socket.user_data.username
+
+            if (who_ignore == username):
+                print(f"Skipping notifying {username}")
+            else:
+                user_socket.new_response(data_json)
 
 
 
@@ -206,7 +173,6 @@ class UsersController:
         
 
 
-users_controller = UsersController()
 
 
 
@@ -272,6 +238,12 @@ class UserSocket():
                 if (len(data) <=0):
                     print("Connection ended")
                     users_controller.user_quit(self)
+
+                    users_controller.notify_clients({
+                        "who_disconneted":self.user_data.username,
+                        "type":n.SOMEONE_DISCONNECTED
+                        },who_ignore=self.user_data.username)
+
                     self.conn.close()
                     break
 
@@ -317,10 +289,9 @@ sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(( "",9999 ))
 sock.listen(1)
 
-
+users_controller = UsersController()
 while True:
     conn,address = sock.accept()
-    # print(address,conn)
     print("connected")
     UserSocket(conn,address[0],address[1])
 

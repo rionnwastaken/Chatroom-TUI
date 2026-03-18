@@ -166,33 +166,6 @@ class UserClient():
         pass
 
 
-    # def request_messages(self):
-    #
-    #     response,size = self._request(c.GET_MESSAGES_RESPONSE,{
-    #         "type":s.GET_MESSAGES,
-    #         "username":self.user_data.username
-    #         })
-    #
-    #     if (size <=0):
-    #         print("Error in request_messages")
-    #         return
-    #
-    #
-    #
-    #
-    #     success = response.get('success')
-    #     data = response.get("data")
-    #     message = response.get("message")
-    #
-    #     if not success:
-    #         print(message)
-    #         return
-    #
-    #     if success and data == None:
-    #         print(message)
-    #         return
-    #
-    #     print(data)
 
 
     def get_active_users(self):
@@ -223,59 +196,75 @@ class UserClient():
 
     def send_message(self):
 
-
-        tupac = self.get_active_users()
-        if tupac == None:
-            print("send_message error")
-            return
-
-        users,message = tupac
+        while True:
 
 
+            tupac = self.get_active_users()
+            if tupac == None:
+                print("send_message error")
+                return
 
-        users_size = len(users)
-
-        if users_size <= 0:
-            print("no peps")
-            print(message)
-            return
+            users,message = tupac
 
 
-        print("USERS")
-        [print(f"({i}){users[i]}") for i in range(0,users_size)]
-        index = int( input("Choose to send message:") )
 
-        if (index >=0 and index <= users_size-1):
+            users_size = len(users)
 
-            message = input("Enter message:")
-
-            user_chosen = users[index]
-
-            response,size = self._request(c.SEND_MESSAGE_RESPONSE,{
-                "type":s.SEND_MESSAGE,
-                "to":user_chosen,
-                "from":self.user_data.username,
-                "message":message
-                })
-
-            if size <=0:
-                print("Error in send_message")
+            if users_size <= 0:
+                print("no peps")
+                print(message)
                 return
 
 
+            index = 0
+            for user in users:
+                print(f"({index}){user}")
+                index += 1
 
-            success = response['success']
-            message = response['message']
-            print(message)
+            print(f"({index})Go back")
 
 
-        pass
+
+
+
+
+
+            chosen_index = Misc.getInt("Choose to send message:")
+
+            if (chosen_index == index):
+                Misc.cleanScreen()
+                break
+
+
+            if (chosen_index >=0 and chosen_index <= index):
+
+                user_chosen = users[chosen_index]
+                while True:
+                    message = input("Enter message ('quit' to exit):")
+
+                    if message.strip() == "quit":
+                        Misc.cleanScreen()
+                        break
+                    response,size = self._request(c.SEND_MESSAGE_RESPONSE,{
+                        "type":s.SEND_MESSAGE,
+                        "to":user_chosen,
+                        "from":self.user_data.username,
+                        "message":message
+                        })
+
+                    if size <=0:
+                        print("Error in send_message")
+                        return
+
+                    success = response['success']
+                    message = response['message']
+                    print(message)
+
+
 
     def listen(self):
         print("Listen mode")
         while (True):
-            data_bytes = u.recvPlain(self.conn)
-            print(data_bytes)
             pass
 
     def exit(self):
@@ -307,6 +296,7 @@ class UserClient():
         self.message_inbox.add(who,message)
 
     def someone_disconnected(self,data_json):
+        print(data_json)
         pass
 
 
@@ -328,7 +318,6 @@ class UserClient():
 
 
                 type_m,message_size = u.unpack_message_prefix(data)
-                print(message_size)
                 data = u.readData(self.conn,message_size)
 
                 if (type_m == MessageType.PLAIN):

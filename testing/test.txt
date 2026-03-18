@@ -1,0 +1,179 @@
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:0 and 0 
+INFO:root:3 and 3 
+INFO:root:3 and 3 
+INFO:root:3 and 3 
+INFO:root:3 and 3 
+INFO:root:3 and 3 
+INFO:root:3 and 3 
+INFO:root:21 and 21 
+INFO:root:21 and 21 
+INFO:root:21 and 21 
+INFO:root:(4, 10, 4, 10)
+INFO:root:(4, 20, 4, 10)
+INFO:root:(4, 30, 4, 10)
+INFO:root:(4, 40, 4, 10)
+INFO:root:(4, 50, 4, 10)
+INFO:root:(4, 60, 4, 10)
+INFO:root:(4, 70, 4, 10)
+INFO:root:(4, 80, 4, 10)
+INFO:root:(4, 90, 4, 10)
+INFO:root:(4, 100, 4, 10)
+INFO:root:(4, 110, 4, 10)
+INFO:root:(4, 120, 4, 10)
+INFO:root:(8, 10, 4, 10)
+INFO:root:(8, 20, 4, 10)
+INFO:root:(8, 30, 4, 10)
+INFO:root:(8, 40, 4, 10)
+INFO:root:(8, 50, 4, 10)
+INFO:root:(8, 60, 4, 10)
+INFO:root:(8, 70, 4, 10)
+INFO:root:(8, 80, 4, 10)
+INFO:root:(8, 90, 4, 10)
+INFO:root:(8, 100, 4, 10)
+INFO:root:(8, 110, 4, 10)
+INFO:root:(8, 120, 4, 10)
+INFO:root:(12, 10, 4, 10)
+INFO:root:(12, 20, 4, 10)
+INFO:root:(12, 30, 4, 10)
+INFO:root:(12, 40, 4, 10)
+INFO:root:(12, 50, 4, 10)
+INFO:root:(12, 60, 4, 10)
+INFO:root:(12, 70, 4, 10)
+INFO:root:(12, 80, 4, 10)
+INFO:root:(12, 90, 4, 10)
+INFO:root:(12, 100, 4, 10)
+INFO:root:(12, 110, 4, 10)
+INFO:root:(12, 120, 4, 10)
+INFO:root:(16, 10, 4, 10)
+INFO:root:(16, 20, 4, 10)
+INFO:root:(16, 30, 4, 10)
+INFO:root:(16, 40, 4, 10)
+INFO:root:(16, 50, 4, 10)
+INFO:root:(16, 60, 4, 10)
+INFO:root:(16, 70, 4, 10)
+INFO:root:(16, 80, 4, 10)
+INFO:root:(16, 90, 4, 10)
+INFO:root:(16, 100, 4, 10)
+INFO:root:(16, 110, 4, 10)
+INFO:root:(16, 120, 4, 10)
+INFO:root:(20, 10, 4, 10)
+INFO:root:(20, 20, 4, 10)
+INFO:root:(20, 30, 4, 10)
+INFO:root:(20, 40, 4, 10)
+INFO:root:(20, 50, 4, 10)
+INFO:root:(20, 60, 4, 10)
+INFO:root:(20, 70, 4, 10)
+INFO:root:(20, 80, 4, 10)
+INFO:root:(20, 90, 4, 10)
+INFO:root:(20, 100, 4, 10)
+INFO:root:(20, 110, 4, 10)
+INFO:root:(20, 120, 4, 10)
+INFO:root:(24, 10, 4, 10)
+INFO:root:(24, 20, 4, 10)
+INFO:root:(24, 30, 4, 10)
+INFO:root:(24, 40, 4, 10)
+INFO:root:(24, 50, 4, 10)
+INFO:root:(24, 60, 4, 10)
+INFO:root:(24, 70, 4, 10)
+INFO:root:(24, 80, 4, 10)
+INFO:root:(24, 90, 4, 10)
+INFO:root:(24, 100, 4, 10)
+INFO:root:(24, 110, 4, 10)
+INFO:root:(24, 120, 4, 10)
+INFO:root:(28, 10, 4, 10)
+INFO:root:(28, 20, 4, 10)
+INFO:root:(28, 30, 4, 10)
+INFO:root:(28, 40, 4, 10)
+INFO:root:(28, 50, 4, 10)
+INFO:root:(28, 60, 4, 10)
+INFO:root:(28, 70, 4, 10)
+INFO:root:(28, 80, 4, 10)
+INFO:root:(28, 90, 4, 10)
+INFO:root:(28, 100, 4, 10)
+INFO:root:(28, 110, 4, 10)
+INFO:root:(28, 120, 4, 10)
+INFO:root:(32, 10, 4, 10)
+INFO:root:(32, 20, 4, 10)
+INFO:root:(32, 30, 4, 10)
+INFO:root:(32, 40, 4, 10)
+INFO:root:(32, 50, 4, 10)
+INFO:root:(32, 60, 4, 10)
+INFO:root:(32, 70, 4, 10)
+INFO:root:(32, 80, 4, 10)
+INFO:root:(32, 90, 4, 10)
+INFO:root:(32, 100, 4, 10)
+INFO:root:(32, 110, 4, 10)
+INFO:root:(32, 120, 4, 10)
