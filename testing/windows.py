@@ -324,11 +324,6 @@ class Main():
 
         curses.wrapper(self.main)
 
-        # try:      vim.keymap.set("n", "K", vim.lsp.buf.hover, { buffer = args.buf, silent = true })
-        #     curses.wrapper(self.main)
-        # except Exception as e:
-        #     print(e)
-
     def create_window(self,y,x,h,w) -> curses.window:
         win = curses.newwin(h, w, y, x)
         return win
@@ -360,7 +355,7 @@ class Main():
         curses.use_default_colors()
 
         
-        menu = Menu(topx=10,topy=5,axis="vertical")
+        menu = Menu(topx=10,topy=5,axis="horizontal")
         login_item = Item(text="Log in (1)",margin=Margin(0,1,0,0),padding=Padding(2,2,2,2))
         signup_item = Item(text="Sign up (2)",margin=Margin(0,1,0,0))
         shit = Item(text="whatup",margin=Margin(0,0,0,0))
@@ -375,137 +370,17 @@ class Main():
         
         menu.show(True)
 
-        # win = curses.newwin(3,5,7,2)
-        #
-        # sub = win.derwin(3,5,0,0)
-        # sub.box()
-        # sub.addstr("y"*14)
-        #
-        # sub.refresh()
-        #
-        #
-        # win.refresh()
 
-        while (True):
-            pass
-
-
-
-
-        return
-        
-        redbox = curses.newwin(5,20,5,1)
-        redbox.bkgd(' ',curses.color_pair(2))
-        redbox.refresh()
-
-        x  = 1
-        y = 5
-
-        
         curses.mousemask(curses.BUTTON1_CLICKED)
         curses.mouseinterval(0)
 
-
-
-        stdsrc.attron(curses.A_BOLD | curses.A_ITALIC)
-        stdsrc.addstr(0, 0, "This is bold text", curses.A_BOLD)
-
-
-        logger.info(f" size { redbox.getmaxyx()}")
-
         while (True):
+
             c = stdsrc.getch()
-
-
-            
-
             if c == -1:
                 continue
 
-            logger.info(f"c {c}")
-            
-
-            if c == curses.KEY_MOUSE:
-                t = curses.getmouse()
-                mousex,mousey = t[1],t[2]
-                logger.info(f"MOuse something? {t} {t[4] == curses.BUTTON1_CLICKED}")
-
-                logger.info(f"Enclosed {redbox.enclose(mousey,mousex)}")
-
-                if redbox.enclose(mousey,mousex):
-                    redbox.bkgd(" ",curses.color_pair(4))
-                    box_lines,box_cols = redbox.getmaxyx()
-                    redbox.resize(box_lines + 1,box_cols + 1)
-                    redbox.refresh()
-                continue
-
-
-
-            if c == curses.KEY_RESIZE:
-                logger.info(f"Main windows size is {stdsrc.getmaxyx()}")
-                continue
-
-            if c == curses.KEY_RIGHT:
-                x += 1
-                stdsrc.erase()            # Erase without immediate repaint
-                redbox.mvwin(y, x)
-                stdsrc.noutrefresh()      # Mark stdscr for refresh but don't redraw yet
-                redbox.noutrefresh()      # Mark redbox for refresh
-                curses.doupdate()         # Redraw everything at once (no flicker)
-                continue
-
-            if c == curses.KEY_LEFT:
-                x += -1
-                stdsrc.erase()            # Erase without immediate repaint
-                redbox.mvwin(y, x)
-                stdsrc.noutrefresh()      # Mark stdscr for refresh but don't redraw yet
-                redbox.noutrefresh()      # Mark redbox for refresh
-                curses.doupdate()         # Redraw everything at once (no flicker)
-                continue
-
-
-            if c == curses.KEY_UP:
-                y += -1
-                stdsrc.erase()            # Erase without immediate repaint
-                redbox.mvwin(y, x)
-                stdsrc.noutrefresh()      # Mark stdscr for refresh but don't redraw yet
-                redbox.noutrefresh()      # Mark redbox for refresh
-                curses.doupdate()         # Redraw everything at once (no flicker)
-                continue
-
-            if c == curses.KEY_DOWN:
-                y += 1
-                stdsrc.erase()            # Erase without immediate repaint
-                redbox.mvwin(y, x)
-                stdsrc.noutrefresh()      # Mark stdscr for refresh but don't redraw yet
-                redbox.noutrefresh()      # Mark redbox for refresh
-                curses.doupdate()         # Redraw everything at once (no flicker)
-                continue
-
-
-
-
-            stdsrc.addch(c)
-            stdsrc.refresh()
-
-
-
-            
-
-
-
-            # curses.setsyx(1,1)
-
-            
-
-
-
-
-    def percentHeight(self,percent):
-        max_height = curses.LINES
-        return int( math.ceil( percent * max_height / 100 ) )
-
-
+            pass
 
 
 Main()
