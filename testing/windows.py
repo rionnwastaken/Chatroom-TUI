@@ -3,6 +3,7 @@ import curses
 import logging
 import math
 import _thread
+from os import terminal_size
 import time
 import curses.textpad
 import curses.panel
@@ -27,29 +28,31 @@ class Coordinates(TypedDict):
     topy:int
 
 class ScreenHandler():
-    def __init__(self) -> None:
-        self.spotlight:Menu | None = None
-        self.screens:dict[str,Menu] = {}
+    def __init__(self,terminal_window) -> None:
+        Screen.terminal_window = terminal_window
+        self.terminal_window = terminal_window
+        self.spotlight:Screen | None = None
+        self.screens:dict[str,Screen] = {}
 
 
-    def add_screen(self,screen_name_identifier,screen):
-        if self.screens.get(screen_name_identifier) != None:
-            logger.info(f"{screen_name_identifier} cannot be added twice")
+    def add_screen(self,screen:"Screen"):
+        if self.screens.get(screen.screen_name_identifier) != None:
+            logger.info(f"{screen.screen_name_identifier} cannot be added twice")
             return
 
-        self.screens[screen_name_identifier] = screen
+        self.screens[screen.screen_name_identifier] = screen
 
     def removeLight(self):
         self.spotlight = None
 
     def set_spotlight(self,screen_name_identifier):
 
-        screen:Menu | None = self.screens.get(screen_name_identifier)
+        screen:Screen | None = self.screens.get(screen_name_identifier)
         if screen == None:
             logger.info(f"'{screen_name_identifier}' screen was not found")
             return
         self.spotlight = screen
-        self.spotlight.show(True)
+        self.spotlight.show()
 
     def handleKey(self,c):
         if self.spotlight != None:
@@ -73,17 +76,17 @@ class Padding():
 
         return self.top + self.bottom
 
-class Margin():
+class Push():
     def __init__(self, top = 0, right = 0, bottom = 0, left = 0):
         self.top = top
         self.right = right
         self.bottom = bottom
         self.left = left
 
-    def get_margin_horizontal_points(self):
+    def get_push_horizontal_points(self):
         return self.right + self.left
 
-    def get_margin_vertical_points(self):
+    def get_push_vertical_points(self):
         return self.bottom + self.top
 
 '''
@@ -103,7 +106,11 @@ There is no global_keys for the screen, at least one layout forcefully needs spo
 '''
 class Screen():
 
+    terminal_window:curses.window
+
     def __init__(self,screen_name_identifier) -> None:
+        term_lines,term_cols = Screen.terminal_window.getmaxyx() 
+        self.screen_window = curses.newwin(term_lines,term_cols,0,0)
         self.layouts:list["Layout"] = []
         self.spotlight:None | Layout = None
         self.traversal_index = 0
@@ -111,7 +118,18 @@ class Screen():
 
     
     def add_layout(self,layout:"Layout"):
+        layout.screen_window = self.screen_window
         self.layouts.append(layout)
+
+
+    def show(self):
+        for lay in self.layouts:
+            lay.show()
+        self.screen_window.bkgd(" ",curses.color_pair(1))
+        self.screen_window.refresh()
+        pass
+
+
 
 
 
@@ -175,12 +193,15 @@ Layout creates the derevied windows for the Items
 
 '''
 class Layout():
-    def __init__(self,coordinates:Coordinates,focusable=True, axis:Literal["horizontal","vertical"] = "horizontal",global_keys = False) -> None:
+    def __init__(self,coordinates:Coordinates,focusable=True, axis:Literal["horizontal","vertical"] = "horizontal",global_keys = False,padding=Padding(),push=Push()) -> None:
         self.focusable = focusable
         self.items:list["Otom"] = []
         self.axis = axis
         self.traversal_index = 0
         self.layout_window:curses.window
+
+        self.padding = padding
+        self.push = push
 
         #Length,margins,padding everything
         self.total_width = 0 
@@ -194,138 +215,153 @@ class Layout():
 
         self.default_border_padding = 2
 
+        self.screen_window:curses.window
+
 
 
         self.there_are_global_keys = global_keys
 
         self.spotlight:Otom | None = None
 
-    class LayoutRenderer():
-        def __init__(self,l:"Layout") -> None:
-            self.l = l
+
+        if (self.topy == None or self.topx == None):
+            raise Exception(f"Coordinate None topx {self.topx} topy {self.topy}")
+
+
+    def _create_menu_window(self):
+
+        layout_height = 0
+        layout_width = 0
+
+        biggerst_height = 0
+        biggest_width = 0
+
+        for item in self.items:
+            item_lines,item_cols = item.get_total_space()
+
+            if item.has_border:
+                item_cols += self.default_border_padding
+                item_lines += self.default_border_padding
+
+            layout_width += item_cols
+            layout_height += item_lines
+
+            if item_cols > biggest_width:
+                biggest_width = item_cols
+
+            if item_lines > biggerst_height:
+                biggerst_height = item_lines
+
+
+
+        #Only has to as tall as the tallest item
+        if self.axis == 'horizontal':
+            self.total_width += layout_width 
+            logger.info(f"max height {biggerst_height}")
+            self.total_height += biggerst_height
+
+        #Only has to as wide as the widest item
+        elif self.axis == 'vertical':
+            self.total_width += biggest_width
+            logger.info(f"max height {layout_height}")
+            self.total_height += layout_height
             pass
 
-        def _create_menu_window(self):
-
-            height_total = 0
-            width_total = 0
-            max_height = 0
-            max_width = 0
-            for item in self.l.items:
-                item_heigth_total,item_width_total = item.getOccupiedSpace(self.l.axis)
-                item_width_total += self.l.default_border_horizontal_padding
-                item_heigth_total += self.l.default_label_height
-
-                width_total += item_width_total
-                height_total += item_heigth_total
-
-                if item_width_total > max_width:
-                    max_width = item_width_total
-
-                if item_heigth_total > max_height:
-                    max_height = item_heigth_total
-
-
-
-            if self.l.axis == 'horizontal':
-                self.l.total_width += width_total 
-                logger.info(f"max height {max_height}")
-                self.l.total_height += max_height
-
-            elif self.l.axis == 'vertical':
-                self.l.total_width += max_width
-                logger.info(f"max height {height_total}")
-                self.l.total_height += height_total
-                pass
-
-            
-            # if self.l.min_width != None and l.total_width < l.min_width:
-            #     self.l.total_width = l.min_width
-            #
-            # if self.l.min_height != None and l.total_height < l.min_height:
-            #     self.l.total_height = l.min_height
-
-
-            if (self.l.topy == None or l.topx == None):
-                logger.info(f"Coordinate None topx {self.l.topx} topy {l.topy}")
-                return
-
-            self.l.menu_win = curses.newwin(l.total_height,l.total_width,l.topy,l.topx)
-            # self.l.menu_win.bkgd(" ",curses.color_pair(1))
-
-
-        def _render(self):
-            # self.menu_win.box()
-            # self.l.menu_win.bkgd(" ",curses.color_pair(1))
-
-            self._create_menu_window()
-            if self.l.menu_win == None:
-                return
-
-            current_posx = 0
-            current_posy = 0
-            #Create subwins
-            for item in self.l.items:
-                width_total = item.getInnerSpace()
-                margin = item.margin
-                padding = item.padding
-
-                #Dont include margin, margin affects the posy
-                win_lines = sum([
-                    1,
-                    self.l.default_border_vertical_padding,
-                    padding.get_padding_vertical_points(),
-                    ])
-
-                #Dont include margin, margin affects the posx
-                win_cols = sum([
-                        width_total,
-                        self.l.default_border_horizontal_padding,
-                        padding.get_padding_horizontal_points(),
-                    ])
-
-                    
-
-                logger.info(f"menuwin {self.l.menu_win.getmaxyx()}")
-                logger.info(f"itemwin {win_lines, win_cols, current_posy, current_posx}")
-
-                item_win:curses.window = self.l.menu_win.derwin(
-                    win_lines,
-                    win_cols,
-                    current_posy,
-                    current_posx
-                )
-
-                text_posy = 1 + item.padding.top
-                text_posx = 1 + item.padding.left
-                
-                item_win.addstr(text_posy,text_posx,item.getText())
-                item_win.box()
-                item_win.refresh()
-                item.setWin(item_win)
-
-            
-                if self.l.axis == 'horizontal':
-                
-                    current_posx += sum([
-                        width_total,
-                        margin.get_margin_horizontal_points(),
-                        padding.get_padding_horizontal_points(),
-                        self.l.default_border_horizontal_padding,
-                        
-                    ]) 
-
-                if self.l.axis == 'vertical':
-                    current_posy  += sum([
-                        item_win.getmaxyx()[0],        
-                        margin.bottom,
-                        # padding.bottom
-                        ])
-
-
-            self.l.menu_win.refresh()
 
         
+
+        
+        # if self.min_width != None and self.total_width < self.min_width:
+        #     self.total_width = self.min_width
+        #
+        # if self.min_height != None and self.total_height < self.min_height:
+        #     self.total_height = self.min_height
+
+
+        # self.total_height += 10
+        # self.total_width += 10
+
+        self.layout_window = self.screen_window.derwin(self.total_height,self.total_width,self.topy,self.topx)
+
+        # self.layout_window.box()
+
+        logger.info(f"layout_window size {self.layout_window.getmaxyx()}")
+        # self.menu_win.bkgd(" ",curses.color_pair(1))
+
+    def show(self):
+        self._render()
+
+
+    def _render(self):
+        # self.menu_win.box()
+        # self.menu_win.bkgd(" ",curses.color_pair(1))
+
+        self._create_menu_window()
+
+        if self.layout_window == None:
+            raise Exception("Layout window is null")
+
+        current_posx = 0
+        current_posy = 0
+        #Create subwins
+        for item in self.items:
+            width = item.cols
+            height = item.lines
+            margin = item.push
+            padding = item.padding
+
+            border = self.default_border_padding if item.has_border else 0
+
+            #Dont include margin, margin affects the posy
+            win_lines = sum([
+                height,
+                border,
+                padding.get_padding_vertical_points(),
+                ])
+
+            #Dont include margin, margin affects the posx
+            win_cols = sum([
+                    width,
+                    border,
+                    padding.get_padding_horizontal_points(),
+                ])
+
+                
+
+            logger.info(f"menuwin {self.layout_window.getmaxyx()}")
+            logger.info(f"itemwin {win_lines, win_cols, current_posy, current_posx}")
+
+            item_win:curses.window = self.layout_window.derwin(
+                win_lines,
+                win_cols,
+                current_posy,
+                current_posx
+            )
+
+            item.renderItem(item_win)
+
+        
+            if self.axis == 'horizontal':
+            
+                current_posx += sum([
+                    width,
+                    margin.get_push_horizontal_points(),
+                    padding.get_padding_horizontal_points(),
+                    border,
+                    
+                ]) 
+
+            if self.axis == 'vertical':
+                current_posy  += sum([
+                    item_win.getmaxyx()[0],        
+                    margin.bottom,
+                    # padding.bottom
+                    ])
+
+        self.layout_window.bkgd(" ",curses.color_pair(2))
+        self.layout_window.refresh()
+
+    
 
 
     def add_item(self,item:"Otom"):
@@ -386,14 +422,17 @@ class Layout():
 
         if self.there_are_global_keys:
             for item in self.items:
-                global_key = item.global_key
-                if c == global_key:
-                    item.onAction()
+                #:
+                if item.global_key != None:
+                    global_key = item.global_key
+                    if c == global_key:
+                        item.onAction()
         else:
-            if self.spotlight == None:
-                raise Exception("class [Layout] func [handleKey] cannot handle key when spotlight is None")
+            if self.spotlight != None:
+                self.spotlight.handleKey(c)
+                # raise Exception("class [Layout] func [handleKey] cannot handle key when spotlight is None")
 
-            self.spotlight.handleKey(c)
+            
 
         pass
 
@@ -403,10 +442,11 @@ Item can hold anything, it only cares about its dimensions
 Item is widget holder for example for labels ,inputs
 Item cannot be focusable and have global_key at the same time
 When a layout is of type global, all of its items must be of type global_key
+When focusable is False and global key is None, it means its a static item
 '''
 class Otom(ABC):
 
-    def __init__(self,lines:int,cols:int,focusable = False,global_key:int = -1,margin = Margin(),padding = Padding(),hasBorder=False) -> None:
+    def __init__(self,lines:int,cols:int,focusable = False,global_key = None,push = Push(),padding = Padding(),hasBorder=False,background=None) -> None:
 
         if focusable and global_key != -1:
             raise Exception("class [Otom] func [__init__] item cannot be focusable and have global_key at the same time")
@@ -414,11 +454,12 @@ class Otom(ABC):
         self.focusable = focusable
         self.global_key = global_key
         self.has_border = hasBorder
+        self.background = background
 
         self.lines = lines
         self.cols = cols
 
-        self.margin = margin
+        self.push = push
         self.padding = padding
 
         self.win:curses.window
@@ -427,9 +468,9 @@ class Otom(ABC):
     def set_win(self,win:curses.window):
         self.win = win
 
-    def get_total_space(self):
-        lines = self.lines + self.margin.bottom + self.margin.top +  self.padding.top + self.padding.bottom
-        cols = self.cols + self.margin.right + self.margin.left + self.padding.right + self.padding.left
+    def get_total_space(self) -> tuple[int,int]:
+        lines = self.lines + self.push.bottom + self.push.top +  self.padding.top + self.padding.bottom
+        cols = self.cols + self.push.right + self.push.left + self.padding.right + self.padding.left
 
         return (lines,cols)
 
@@ -439,7 +480,6 @@ class Otom(ABC):
         raise NotImplementedError()
 
 
-    @abstractmethod
     def handleKey(self,c):
         raise NotImplementedError()
 
@@ -451,296 +491,29 @@ class Otom(ABC):
 
 '''Here lines and cols dont take into considerations the space of the window borders '''
 class Label(Otom):
-    def __init__(self,text,margin=Margin(), padding=Padding(),hasBorder=False) -> None:
+    def __init__(self,text,push=Push(), padding=Padding(),hasBorder=False,background=None) -> None:
         self.length = len(text)
         self.text = text
-        super().__init__(1,self.length, margin=margin, padding=padding,hasBorder=hasBorder)
+        self.win:curses.window
+        super().__init__(1,self.length, push=push, padding=padding,hasBorder=hasBorder,background=background)
 
 
-    def rederItem(self,window:curses.window):
+    def renderItem(self,window:curses.window):
+        self.win = window
+
+        if self.background != None:
+            self.win.bkgd(" ", curses.color_pair(self.background))
+
         if not self.has_border:
-            window.addstr(0,0,self.text)
+            logger.info(f"Window size {window.getmaxyx()} and length text = {len(self.text)}")
+            # t = "-" * ( self.win.getmaxyx()[1] -1  )
+            window.insstr(0,0,self.text)
 
         else:
+            window.box()
             window.addstr(1,1,self.text)
 
-
-
-
-
-
-
-
-class Item():
-
-    def __init__(self, text = None, margin = Margin(), padding = Padding()):
-        self.text = text
-        self.length = len(text) if text != None else None 
-
-        self.key:int | None = None
-        self.margin:Margin  = margin
-        self.padding:Padding  = padding
-
-        self.action = None
-
-
-        self.win: curses.window | None = None
-
-
-
-    def setAction(self,key:int,action:Callable):
-        self.action = action
-        self.key = key
-
-
-    def setText(self,text):
-        self.text = text
-        self.length = len(text)
-
-    def setmargin(self,pad):
-        self.margin = pad
-
-    def setWin(self,win:curses.window):
-        self.win = win
-
-
-    def onAction(self):
-        if self.action != None:
-            self.action()
-
-
-
-    def getOccupiedSpace(self,axis:str):
-
-        width_total = 0
-        height_total = 0
-
-
-        if self.length != None:
-            width_total += self.length
-
-
-
-        width_total += self.margin.right + self.margin.left
-        height_total += self.margin.top + self.margin.bottom
-
-        width_total += self.padding.right + self.padding.left
-        height_total += self.padding.top + self.padding.bottom
-
-
-        #logging
-        if self.length == None:
-            logger.error("Item has no length")
-
-        return (height_total,width_total)
-
-        # if axis == "vertical":
-        #     pass
-
-    def getInnerSpace(self):
-        if self.length != None:
-            return self.length
-
-        logger.error("Item has no length")
-        return 0 
-
-
-
-    def getmargin(self):
-        return self.margin
-
-
-        
-
-
-    def getText(self):
-
-        if self.text != None:
-            return self.text
-
-        logger.error("Text in item is None")
-        return ""
-
-    def getKey(self):
-        return self.key 
-
-
-
-
-class Menu():
-
-    def __init__(self,topx=None,topy=None,axis="horizontal",min_height=None,min_width=None) -> None:
-        self.items:list["Item"] = []
-        self.rendered = False
-        self.menu_win:curses.window 
-
-        self.total_width = 0
-        self.total_height = 0
-
-        self.topx = topx
-        self.topy = topy
-        self.axis = axis
-        self.min_height = None
-        self.min_width = None
-
-
-        self.default_border_horizontal_padding = 2
-        self.default_border_vertical_padding = 2
-        self.default_label_height = 3
-        pass
-
-    def hide(self):
-        self.menu_win.clear()
-        self.menu_win.refresh()
-
-
-
-
-    def addItem(self,item:"Item"):
-        self.items.append(item)
-
-
-    def show(self,v):
-        if not self.rendered and v == True:
-            self._render()
-            self.rendered = True
-
-
-    def _create_menu_window(self):
-
-        height_total = 0
-        width_total = 0
-        max_height = 0
-        max_width = 0
-        for item in self.items:
-            item_heigth_total,item_width_total = item.getOccupiedSpace(self.axis)
-            item_width_total += self.default_border_horizontal_padding
-            item_heigth_total += self.default_label_height
-
-            width_total += item_width_total
-            height_total += item_heigth_total
-
-            if item_width_total > max_width:
-                max_width = item_width_total
-
-            if item_heigth_total > max_height:
-                max_height = item_heigth_total
-
-
-
-        if self.axis == 'horizontal':
-            self.total_width += width_total 
-            logger.info(f"max height {max_height}")
-            self.total_height += max_height
-
-        elif self.axis == 'vertical':
-            self.total_width += max_width
-            logger.info(f"max height {height_total}")
-            self.total_height += height_total
-            pass
-
-        
-        # if self.min_width != None and self.total_width < self.min_width:
-        #     self.total_width = self.min_width
-        #
-        # if self.min_height != None and self.total_height < self.min_height:
-        #     self.total_height = self.min_height
-
-
-        if (self.topy == None or self.topx == None):
-            logger.info(f"Coordinate None topx {self.topx} topy {self.topy}")
-            return
-
-        self.menu_win = curses.newwin(self.total_height,self.total_width,self.topy,self.topx)
-        # self.menu_win.bkgd(" ",curses.color_pair(1))
-
-
-    def _render(self):
-        # self.menu_win.box()
-        # self.menu_win.bkgd(" ",curses.color_pair(1))
-
-        self._create_menu_window()
-        if self.menu_win == None:
-            return
-
-        current_posx = 0
-        current_posy = 0
-        #Create subwins
-        for item in self.items:
-            width_total = item.getInnerSpace()
-            margin = item.margin
-            padding = item.padding
-
-            #Dont include margin, margin affects the posy
-            win_lines = sum([
-                1,
-                self.default_border_vertical_padding,
-                padding.get_padding_vertical_points(),
-                ])
-
-            #Dont include margin, margin affects the posx
-            win_cols = sum([
-                    width_total,
-                    self.default_border_horizontal_padding,
-                    padding.get_padding_horizontal_points(),
-                ])
-
-                
-
-            logger.info(f"menuwin {self.menu_win.getmaxyx()}")
-            logger.info(f"itemwin {win_lines, win_cols, current_posy, current_posx}")
-
-            item_win:curses.window = self.menu_win.derwin(
-                win_lines,
-                win_cols,
-                current_posy,
-                current_posx
-            )
-
-            text_posy = 1 + item.padding.top
-            text_posx = 1 + item.padding.left
-            
-            item_win.addstr(text_posy,text_posx,item.getText())
-            item_win.box()
-            item_win.refresh()
-            item.setWin(item_win)
-
-        
-            if self.axis == 'horizontal':
-            
-                current_posx += sum([
-                    width_total,
-                    margin.get_margin_horizontal_points(),
-                    padding.get_padding_horizontal_points(),
-                    self.default_border_horizontal_padding,
-                    
-                ]) 
-
-            if self.axis == 'vertical':
-                current_posy  += sum([
-                    item_win.getmaxyx()[0],        
-                    margin.bottom,
-                    # padding.bottom
-                    ])
-
-
-        self.menu_win.refresh()
-
-
-            
-
-
-    def handleKey(self,key):
-        for item in self.items:
-            if (key == item.getKey()):
-                item.onAction()
-
-    
-
-
-
-
-
+        window.refresh()
 
 
 
@@ -780,43 +553,100 @@ class Main():
         curses.mouseinterval(0)
 
         stdsrc.refresh()
-        curses.use_default_colors()
+        # curses.use_default_colors()
+
+        # term_lines, term_cols = stdsrc.getmaxyx()
+        # me = curses.newwin(term_lines,term_cols,0,0)
+        #
+        # me.bkgd(" ",curses.color_pair(1))
+        #
+        # ma = me.derwin(1,5,4,0)
+        #
+        # logger.info(f"me is {me.getmaxyx()}")
+        # logger.info(f"ma is {ma.getmaxyx()}")
+        # ma.insstr(0,0,"hell")
+        #
+        #
+        # ma.refresh()
+        # me.refresh()
+
+        # a = curses.newwin(5,20,10,50)
+        # a.addstr("are you coming")
+        # a.bkgd(" ",curses.color_pair(1))
+        # a.refresh()
+        # stdsrc.refresh()
+        #
+        #
+        #
+        # while (True):
+        #
+        #     c = stdsrc.getch()
+        #     if c == -1:
+        #         continue
+        #
+        #     if c == curses.KEY_RESIZE:
+        #         a.refresh()
+        #
+        #     a.addch(c)
+        #     a.refresh()
+        #
 
 
-        menu2 = Menu(topx=10,topy=20)
-        manzana = Item(text="whatup?")
-        menu2.addItem(manzana)
 
 
-        menuHandler = ScreenHandler()
+        screen_handler = ScreenHandler(stdsrc)
 
-        
-        menu = Menu(topx=10,topy=5,axis="horizontal")
-        login_item = Item(text="Log in (1)",margin=Margin(0,1,0,0),padding=Padding(2,2,2,2))
-        signup_item = Item(text="Sign up (2)",margin=Margin(0,1,0,0))
-        shit = Item(text="whatup",margin=Margin(0,0,0,0))
-        dogs = Item(text="Who let the dogs out?")
+        screen_login = Screen("login")
+        login_layout = Layout({"topy":5,"topx":20})
+        texto = Label("Hello",push=Push(0,5,0,0),hasBorder=True,background=1)
+        texto1 = Label("whatup",push=Push(0,0,0,0))
 
-        def login_action():
-            menu.hide()
-            menuHandler.removeLight()
-            menuHandler.set_spotlight("menu2")
-            
+        login_layout.add_item(texto)
+        login_layout.add_item(texto1)
+        screen_login.add_layout(login_layout)
+        screen_login.set_spotlight(login_layout)
 
 
-            # stdsrc.refresh()
-        login_item.setAction(ord("1"),login_action)
-        menu.addItem(login_item)
-        menu.addItem(signup_item)
-        menu.addItem(shit)
-        menu.addItem(dogs)
+        screen_handler.add_screen(screen_login)
+        screen_handler.set_spotlight(screen_name_identifier="login")
 
 
 
 
-        menuHandler.add_screen("menu",menu)
-        menuHandler.add_screen("menu2",menu2)
-        menuHandler.set_spotlight("menu")
+        # menu2 = Menu(topx=10,topy=20)
+        # manzana = Item(text="whatup?")
+        # menu2.addItem(manzana)
+        #
+        #
+        # menuHandler = ScreenHandler()
+        #
+        # 
+        # menu = Menu(topx=10,topy=5,axis="horizontal")
+        # login_item = Item(text="Log in (1)",margin=Margin(0,1,0,0),padding=Padding(2,2,2,2))
+        # signup_item = Item(text="Sign up (2)",margin=Margin(0,1,0,0))
+        # shit = Item(text="whatup",margin=Margin(0,0,0,0))
+        # dogs = Item(text="Who let the dogs out?")
+        #
+        # def login_action():
+        #     menu.hide()
+        #     menuHandler.removeLight()
+        #     menuHandler.set_spotlight("menu2")
+        #     
+        #
+        #
+        #     # stdsrc.refresh()
+        # login_item.setAction(ord("1"),login_action)
+        # menu.addItem(login_item)
+        # menu.addItem(signup_item)
+        # menu.addItem(shit)
+        # menu.addItem(dogs)
+        #
+        #
+        #
+        #
+        # menuHandler.add_screen("menu",menu)
+        # menuHandler.add_screen("menu2",menu2)
+        # menuHandler.set_spotlight("menu")
 
 
 
@@ -826,7 +656,10 @@ class Main():
             if c == -1:
                 continue
 
-            menuHandler.handleKey(c)
+            screen_handler.handleKey(c)
+
+            # screen_login.show()
+
             pass
 
 
