@@ -321,14 +321,11 @@ class Layout():
 
 
         self.screen_api:ScreenAPI
-        # self.screen_window:curses.window
-        # self.screen_obj:Screen
 
 
 
+        self.registered_global_keys = []
         self.layout_kind = None
-        # self.there_are_global_keys:bool
-
         self.spotlight:Item | None = None
 
 
@@ -517,6 +514,11 @@ class Layout():
 
         logger.info(f"{'-'*10}END RENDERING LAYOUT{'-'*10}")
     
+    def register_global_key(self,key):
+        if key in self.registered_global_keys:
+            raise Exception(f"Cannot register the same key twice ({key},'{chr(key)}') in the same layout")
+
+        self.registered_global_keys.append(key)
 
 
     def add_item(self,item:"Item"):
@@ -525,11 +527,11 @@ class Layout():
 
 
 
-
         if (isinstance(item,FocusableItem)):
             self.layout_kind = FocusableItem
 
         if (isinstance(item,GlobalKeyItem)):
+            self.register_global_key(item.global_key)
             self.layout_kind = GlobalKeyItem
 
 
