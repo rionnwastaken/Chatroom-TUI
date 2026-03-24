@@ -1,5 +1,6 @@
 import curses
 from enum import StrEnum,auto
+from types import NoneType
 from typing import Callable,Literal,TypedDict,Protocol
 from abc import ABC, abstractmethod
 import logging
@@ -275,7 +276,6 @@ class Layout():
         focusable=True,
         hasBorder=False,
         axis:Literal["horizontal","vertical"] = "horizontal",
-        global_keys = False,
         padding=Padding(),
         push=Push(),
     ) -> None:
@@ -326,7 +326,8 @@ class Layout():
 
 
 
-        self.there_are_global_keys = global_keys
+        self.layout_kind = None
+        # self.there_are_global_keys:bool
 
         self.spotlight:Item | None = None
 
@@ -519,8 +520,18 @@ class Layout():
 
 
     def add_item(self,item:"Item"):
-        if self.there_are_global_keys and isinstance(item,FocusableItem):
-            raise Exception("class [Layout] func [add_item] cannot add item that is focusable when there are global keys")
+        if (self.layout_kind != None and not isinstance(item,self.layout_kind)):
+            raise Exception(f"Item is not subclass of {self.layout_kind}\nA layout should only have items of the same kind")
+
+
+
+
+        if (isinstance(item,FocusableItem)):
+            self.layout_kind = FocusableItem
+
+        if (isinstance(item,GlobalKeyItem)):
+            self.layout_kind = GlobalKeyItem
+
 
         self.items.append(item)
 
@@ -529,8 +540,8 @@ class Layout():
 
 
     def set_spotlight(self,item:"Item"):
-        if self.there_are_global_keys == True:
-            raise Exception("class [Layout] func [set_spotlight] cannot set spotlight when there are global keys")
+        if isinstance(item,GlobalKeyItem): 
+            raise Exception("class [Layout] func [set_spotlight] cannot set spotlight when item is of GlobalKeyItem")
 
         self.spotlight = item
         self.traversal_index = -1
@@ -545,7 +556,7 @@ class Layout():
     def traverse(self,direction:Literal["forward","backward"]):
 
         #Request switching to another layout
-        if self.there_are_global_keys:
+        if self.layout_kind == GlobalKeyItem: 
             self.screen_api.traverse("forward")
             return
 
@@ -590,7 +601,7 @@ class Layout():
             self.traverse("forward")
             return
 
-        if self.there_are_global_keys:
+        if self.layout_kind == GlobalKeyItem: 
             found_item = False
             for item in self.items:
                 #:
@@ -799,6 +810,7 @@ class ButtonGlobalKey(ButtonBase,GlobalKeyItem):
 class ButtonFocusable(ButtonBase,FocusableItem):
 
     def __init__(self, text, push=Push(), padding=Padding(), hasBorder=False, background=None) -> None:
+        self.item = self
         ButtonBase.__init__(self,text)
         FocusableItem.__init__(self, 1,len(self.text), push, padding, hasBorder, background)
 
