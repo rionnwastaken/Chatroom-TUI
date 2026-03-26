@@ -1,7 +1,7 @@
 import curses
 from enum import StrEnum,auto
 from types import NoneType
-from typing import Callable,Literal,TypedDict,Protocol
+from typing import Callable,Literal,TypedDict,Protocol,Required,NotRequired, Unpack
 from abc import ABC, abstractmethod
 import logging
 
@@ -29,6 +29,7 @@ class ReusableActions():
 
         def inner():
             nonlocal x
+            # curses.curs_set(0)
             win = btn.win
             x = (x + 1) % len(cols)
             win.bkgd(" ", curses.color_pair(cols[x]))
@@ -165,8 +166,11 @@ class Screen():
         self.screen_window = curses.newwin(term_lines,term_cols,0,0)
         self.layouts:list["Layout"] = []
         self.spotlight:None | Layout = None
-        self.traversal_index = 0
+        self.traversal_index = -1 # Starts like that cause when adding layout it increments
         self.screen_name_identifier = screen_name_identifier
+
+
+        self.id_counter = 0
 
     def get_screen_size(self):
         return self.screen_window.getmaxyx()
@@ -179,6 +183,9 @@ class Screen():
 
     def add_layout(self,layout:"Layout"):
         layout.screen_api = self
+        layout.id = self.id_counter
+        self.traversal_index += 1
+        self.id_counter += 1
         self.layouts.append(layout)
 
         self.spotlight = layout
@@ -249,6 +256,7 @@ class Screen():
 
     def handleKey(self,c):
         if self.spotlight != None:
+            logger.info(f"Layout id {self.spotlight.id}")
             self.spotlight.handleKey(c)
             return
 
@@ -279,6 +287,10 @@ class Layout():
         padding=Padding(),
         push=Push(),
     ) -> None:
+
+        self.id:int
+
+
         self.focusable = focusable
         self.items:list["Item"] = []
         self.axis = axis
@@ -522,7 +534,11 @@ class Layout():
 
 
     def add_item(self,item:"Item"):
-        if (self.layout_kind != None and not isinstance(item,self.layout_kind)):
+
+        if (isinstance(item,StaticItem)):
+            pass
+
+        elif (self.layout_kind != None and not isinstance(item,self.layout_kind)):
             raise Exception(f"Item is not subclass of {self.layout_kind}\nA layout should only have items of the same kind")
 
 
@@ -566,6 +582,13 @@ class Layout():
         magnitude = 1 if direction == "forward" else -1
         count = 0
 
+        #No items
+        # if len(self.items) <= 0:
+        #     self.screen_api.traverse("forward")
+        #     return
+
+
+
         while (True):
             previous_item = self.items[self.traversal_index]
 
@@ -579,6 +602,8 @@ class Layout():
             if self.traversal_index >= len(self.items):
                 self.traversal_index = 0 
                 self.screen_api.traverse("forward")
+                logger.info("screen forward")
+                return
 
             next_item = self.items[self.traversal_index]
 
@@ -643,6 +668,9 @@ class Item(ABC):
         padding = Padding(),
         hasBorder=False,
         background=None,
+        min_width=None,
+        max_width=None,
+        **kwargs
     ) -> None:
 
 
@@ -676,8 +704,11 @@ class Item(ABC):
 
 class FocusableItem(Item,ABC):
 
-    def __init__(self, lines: int, cols: int, push=Push(), padding=Padding(), hasBorder=False, background=None) -> None:
-        Item.__init__(self,lines, cols, push, padding, hasBorder, background)
+    # def __init__(self, lines: int, cols: int, push=Push(), padding=Padding(), hasBorder=False, background=None) -> None:
+    def __init__(self,**kwargs) -> None:
+
+        super().__init__(**kwargs)
+        # Item.__init__(self,lines, cols, push, padding, hasBorder, background)
 
     @abstractmethod
     def handleReceivingFocus(self):
@@ -690,9 +721,11 @@ class FocusableItem(Item,ABC):
 
 class GlobalKeyItem(Item,ABC):
 
-    def __init__(self,global_key,lines: int, cols: int, push=Push(), padding=Padding(), hasBorder=False, background=None) -> None:
+    # def __init__(self,global_key,lines: int, cols: int, push=Push(), padding=Padding(), hasBorder=False, background=None) -> None:
+    def __init__(self,global_key,global_key_char,**kwargs) -> None:
         self.global_key = global_key
-        Item.__init__(self,lines, cols, push, padding, hasBorder, background)
+        super().__init__(**kwargs)
+        # Item.__init__(self,lines, cols, push, padding, hasBorder, background)
 
         
 
@@ -739,12 +772,15 @@ class Label(StaticItem):
 
 
 class ButtonBase(Item,ABC):
-    def __init__(self,text) -> None:
+    def __init__(self,text,**kwargs) -> None:
         self.length = len(text)
         self.text = text
+
         self.win:curses.window
         self.actions:list[Callable] = []
-        self.item:Item
+
+        super().__init__(**kwargs)
+        # self.item:Item
         # super().__init__(lines, cols, push, padding, hasBorder, background)
 
         
@@ -752,14 +788,14 @@ class ButtonBase(Item,ABC):
 
 
     def renderItem(self,window:curses.window):
-        self.item.win = window
+        self.win = window
 
-        if self.item.background != None:
-            self.item.win.bkgd(" ", curses.color_pair(self.item.background))
+        if self.background != None:
+            self.win.bkgd(" ", curses.color_pair(self.background))
 
-        if not self.item.has_border:
+        if not self.has_border:
             logger.info(f"Window size {window.getmaxyx()} and length text = {len(self.text)}")
-            # t = "-" * ( self.item.win.getmaxyx()[1] -1  )
+            # t = "-" * ( self.win.getmaxyx()[1] -1  )
             window.insstr(0,0,self.text)
 
         else:
@@ -775,23 +811,71 @@ class ButtonBase(Item,ABC):
     def addAction(self,c:Callable):
         self.actions.append(c)
 
-    # def onAction(self):
-    #     if len( self.actions ) >0:
-    #         for action in self.actions:
-    #             action()
-    #
-    #     pass
+
+
+
+class ButtonGlobalKeyType(TypedDict,total=False):
+
+     text:Required[str]
+     global_key_char:Required[str]
+     global_key:int
+     push:Push
+     padding:Padding
+     hasBorder:bool
+     background:int | None
+     lines:int
+     cols:int
+
+
+class defaultItemAttributes(TypedDict,total=False):
+     push:Push
+     padding:Padding
+     hasBorder:bool
+     background:int | None
+     lines:int
+     cols:int
+     min_width:int
+     max_width:int
+
+
+
 
 class ButtonGlobalKey(ButtonBase,GlobalKeyItem):
 
-    def __init__(self, text,global_key:str, push=Push(), padding=Padding(), hasBorder=False, background=None) -> None:
-        if len(global_key) > 1:
-            raise Exception(f"global key {global_key} must be a char")
+    def __init__(self,**kwargs:Unpack[ButtonGlobalKeyType]) -> None:
 
 
-        self.item = self
-        ButtonBase.__init__(self,text)
-        GlobalKeyItem.__init__(self,ord(global_key), 1,len(self.text), push, padding, hasBorder, background)
+
+
+        global_key_char = kwargs.get('global_key_char')
+        text = len(kwargs.get('text'))
+        
+        kwargs.setdefault("padding", Padding())
+        kwargs.setdefault("push",Push() )
+        kwargs.setdefault("hasBorder",False )
+        kwargs.setdefault("background",None )
+        kwargs.setdefault("lines",1 )
+        kwargs.setdefault("cols",text )
+
+        if global_key_char == None:
+            raise Exception(f"Error:global_key is None")
+
+        if len(global_key_char) > 1:
+            raise Exception(f"global key {global_key_char} must be a char")
+
+        # kwargs.pop('glo')
+        kwargs['global_key'] = ord(global_key_char)
+
+        # self, text,global_key:str, push=Push(), padding=Padding(), hasBorder=False, background=None,**kwargs
+
+
+        # self.item = self
+
+        super().__init__(**kwargs)
+
+        # ButtonBase.__init__(self,text=text,**kwargs)
+        # GlobalKeyItem.__init__(self,ord(global_key), 1,len(self.text), push, padding, hasBorder, background)
+        # GlobalKeyItem.__init__(self, ord(global_key), len(self.text), push, padding, hasBorder, background, lines=1)
 
 
 
@@ -811,8 +895,15 @@ class ButtonGlobalKey(ButtonBase,GlobalKeyItem):
 
 class ButtonFocusable(ButtonBase,FocusableItem):
 
-    def __init__(self, text, push=Push(), padding=Padding(), hasBorder=False, background=None) -> None:
-        self.item = self
+
+    # def __init__(self, text, push=Push(), padding=Padding(), hasBorder=False, background=None,**kwargs:Unpack[defaultItemAttributes]) -> None:
+    def __init__(self,text,**kwargs:Unpack[defaultItemAttributes]) -> None:
+
+        kwargs.setdefault('text',text)
+        # self.item = self
+
+        super().__init__(**kwargs)
+
         ButtonBase.__init__(self,text)
         FocusableItem.__init__(self, 1,len(self.text), push, padding, hasBorder, background)
 
@@ -831,24 +922,35 @@ class ButtonFocusable(ButtonBase,FocusableItem):
 
 
 
-class Input(Item):
-    def __init__(self,push=Push(),min_width=10, padding=Padding(),hasBorder=False,background=None) -> None:
-        self.length = min_width
+class Input(FocusableItem):
+    # def __init__(self,push=Push(),min_width=10, padding=Padding(),hasBorder=False,background=None) -> None:
+    def __init__(self,**kwargs:Unpack[defaultItemAttributes]) -> None:
+
+        min_width = kwargs.setdefault('min_width',10)
+
+
+        self.length = kwargs.get('min_width')
         self.win:curses.window
-        self.cursorx = -1 if not hasBorder else 0
-        self.cursory = 0 if not hasBorder else 1
+        self.cursorx = -1 if not kwargs.get('hasBorder') else 0
+        self.cursory = 0 if not kwargs.get('hasBorder') else 1
         self.max_line,self.max_col = -1,-1
 
+        
+        kwargs.setdefault('lines',1)
+        kwargs.setdefault('cols',min_width)
 
 
-        super().__init__(
-            1,
-            self.length,
-            push=push,
-            padding=padding,
-            hasBorder=hasBorder,
-            background=background,
-        )
+        super().__init__(**kwargs)
+
+
+        # super().__init__(
+        #     1,
+        #     self.length,
+        #     push=push,
+        #     padding=padding,
+        #     hasBorder=hasBorder,
+        #     background=background,
+        # )
 
 
     def handleReceivingFocus(self):
@@ -916,3 +1018,8 @@ class Input(Item):
         # self.win.insch(c)
         self.win.refresh()
 
+
+
+
+if __name__ == "__main__":
+    print(ButtonGlobalKey.mro())
