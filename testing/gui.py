@@ -225,7 +225,7 @@ class Screen():
 
         
         if len(self.layouts) == 1:
-            self.layouts[0].layout_receive_focus('forward')
+            self.layouts[0].layout_receive_focus(direction)
             return 
 
         logger.info("Screen, traversing to a new layout")
@@ -606,7 +606,7 @@ class Layout():
 
 
         if self.layout_kind == GlobalKeyItem: 
-            self.screen_api.traverse("forward")
+            self.screen_api.traverse(direction)
             return
 
 
@@ -621,8 +621,9 @@ class Layout():
 
             self.traversal_index += magnitude
 
-            # if self.traversal_index < 0:
-            #     self.traversal_index = len(self.items) - 1
+            if self.traversal_index < 0:
+                is_there_next_layout = self.screen_api.traverse("backward")
+                # self.traversal_index = len(self.items) - 1
 
 
             #Going forward means changing screen and now  when this receives focus it should
@@ -658,6 +659,11 @@ class Layout():
         if c == ord("\t"):
             self.traverse("forward")
             return
+
+        if c == curses.KEY_BTAB:
+            self.traverse("backward")
+            return
+
 
         if self.layout_kind == GlobalKeyItem: 
             found_item = False
@@ -943,12 +949,12 @@ class ButtonFocusable(ButtonBase,FocusableItem):
         super().__init__(**kwargs)
 
 
-        self.actions:dict = {}
+        self.actions:dict = {} # type: ignore
 
         # ButtonBase.__init__(self,text)
         # FocusableItem.__init__(self, 1,len(self.text), push, padding, hasBorder, background)
 
-    def addAction(self,key: str | int,c: Callable):
+    def addAction(self,key: str | int,c: Callable): # type: ignore
 
         if isinstance(key,str):
             if len(key) != 1:
@@ -964,7 +970,7 @@ class ButtonFocusable(ButtonBase,FocusableItem):
 
     def handleReceivingFocus(self):
         logger.info("button receiving focus")
-        print("shit")
+        # print("shit")
 
     def handleKey(self, c):
 
