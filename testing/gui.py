@@ -35,7 +35,7 @@ class ReusableActions():
             win.bkgd(" ", curses.color_pair(cols[x]))
             win.refresh()
             btn.background = cols[x]
-            logger.info(f"Changing btn color {cols[x]}")
+            # logger.info(f"Changing btn color {cols[x]}")
         return inner
 
 
@@ -211,8 +211,8 @@ class Screen():
 
         self.spotlight = layout
         self.traversal_index = -1
-        for index,lay in enumerate( self.layouts ):
-            if self.spotlight == lay:
+        for index,layout in enumerate( self.layouts ):
+            if self.spotlight == layout:
                 self.traversal_index = index
                 logger.info(f"Screen traversal index {self.traversal_index}")
                 break
@@ -222,7 +222,16 @@ class Screen():
 
 
     def traverse(self,direction:Literal["forward","backward"]):
+
+        
+        if len(self.layouts) == 1:
+            self.layouts[0].layout_receive_focus('forward')
+            return 
+
         logger.info("Screen, traversing to a new layout")
+
+        
+
 
         magnitude = 1 if direction == "forward" else -1
 
@@ -239,7 +248,9 @@ class Screen():
 
             next_layout = self.layouts[self.traversal_index]
             logger.info(f"Next layout focusable? {next_layout.focusable}")
+
             if next_layout.focusable:
+                next_layout.layout_receive_focus(direction)
                 self.spotlight = next_layout
                 break
 
@@ -247,7 +258,6 @@ class Screen():
             if count >= len(self.layouts) + 5:
                 raise Exception("class Screen func [traverse] There is error in travesal infinite while loop")
 
-        return None
 
         # if (self.traversal)
 
@@ -256,7 +266,7 @@ class Screen():
 
     def handleKey(self,c):
         if self.spotlight != None:
-            logger.info(f"Layout id {self.spotlight.id}")
+            # logger.info(f"Layout id {self.spotlight.id}")
             self.spotlight.handleKey(c)
             return
 
@@ -294,7 +304,7 @@ class Layout():
         self.focusable = focusable
         self.items:list["Item"] = []
         self.axis = axis
-        self.traversal_index = 0
+        self.traversal_index = -1
         self.layout_window:curses.window
 
         self.hasBorder = hasBorder
@@ -534,6 +544,7 @@ class Layout():
 
 
     def add_item(self,item:"Item"):
+        logger.info(f"start traversal index in additem {self.traversal_index}")
 
         if (isinstance(item,StaticItem)):
             pass
@@ -555,6 +566,10 @@ class Layout():
 
         if isinstance(item,FocusableItem):
             self.set_spotlight(item)
+            # self.traversal_index += 1
+            # logger.info(f"dumbass ti bef {self.traversal_index -1} af {self.traversal_index }")
+
+        logger.info(f"end traversal index in additem {self.traversal_index}")
 
 
     def set_spotlight(self,item:"Item"):
@@ -562,18 +577,34 @@ class Layout():
             raise Exception("class [Layout] func [set_spotlight] cannot set spotlight when item is of GlobalKeyItem")
 
         self.spotlight = item
-        self.traversal_index = -1
+
+        found = False
         for index,item in enumerate( self.items ):
             if self.spotlight == item:
                 self.traversal_index = index
+                found = True
 
-        if self.traversal_index == -1:
+        if not found:
             raise Exception(f"class [Layout]  func [set_spotlight] item was not found in items")
+
+    def layout_receive_focus(self,from_where:Literal["forward","backward"]):
+
+        if from_where == 'forward':
+            self.traversal_index = 0
+            self.spotlight = self.items[0]
+
+        elif from_where == 'backward':
+            self.traversal_index = len(self.items) -1
+            self.spotlight = self.items[ self.traversal_index ]
+
 
 
     def traverse(self,direction:Literal["forward","backward"]):
 
         #Request switching to another layout
+        logger.info(f"Traversing in Layout, and kind is {self.layout_kind}")
+
+
         if self.layout_kind == GlobalKeyItem: 
             self.screen_api.traverse("forward")
             return
@@ -582,10 +613,6 @@ class Layout():
         magnitude = 1 if direction == "forward" else -1
         count = 0
 
-        #No items
-        # if len(self.items) <= 0:
-        #     self.screen_api.traverse("forward")
-        #     return
 
 
 
@@ -594,20 +621,24 @@ class Layout():
 
             self.traversal_index += magnitude
 
-            if self.traversal_index < 0:
-                self.traversal_index = len(self.items) - 1
+            # if self.traversal_index < 0:
+            #     self.traversal_index = len(self.items) - 1
 
+
+            #Going forward means changing screen and now  when this receives focus it should
+            #be the first one,
 
             #Go to next layout
             if self.traversal_index >= len(self.items):
-                self.traversal_index = 0 
-                self.screen_api.traverse("forward")
-                logger.info("screen forward")
-                return
+                self.traversal_index = -1 
+                is_there_next_layout = self.screen_api.traverse("forward")
+
+
 
             next_item = self.items[self.traversal_index]
 
             if isinstance(next_item,FocusableItem):
+                logger.info(f"Widget receiving focus {next_item.__class__.__name__}")
                 next_item.handleReceivingFocus()
                 self.spotlight = next_item
                 break
@@ -811,22 +842,6 @@ class ButtonBase(Item,ABC):
     def addAction(self,c:Callable):
         self.actions.append(c)
 
-
-
-
-class ButtonGlobalKeyType(TypedDict,total=False):
-
-     text:Required[str]
-     global_key_char:Required[str]
-     global_key:int
-     push:Push
-     padding:Padding
-     hasBorder:bool
-     background:int | None
-     lines:int
-     cols:int
-
-
 class defaultItemAttributes(TypedDict,total=False):
      push:Push
      padding:Padding
@@ -836,6 +851,21 @@ class defaultItemAttributes(TypedDict,total=False):
      cols:int
      min_width:int
      max_width:int
+
+
+
+
+
+class ButtonGlobalKeyType(defaultItemAttributes,total=False):
+     text:Required[str]
+     global_key_char:Required[str]
+     global_key:int
+
+
+class ButtonFocusableType(defaultItemAttributes,total=False):
+     text:Required[str]
+
+
 
 
 
@@ -897,24 +927,53 @@ class ButtonFocusable(ButtonBase,FocusableItem):
 
 
     # def __init__(self, text, push=Push(), padding=Padding(), hasBorder=False, background=None,**kwargs:Unpack[defaultItemAttributes]) -> None:
-    def __init__(self,text,**kwargs:Unpack[defaultItemAttributes]) -> None:
+    def __init__(self,**kwargs:Unpack[ButtonFocusableType]) -> None:
 
-        kwargs.setdefault('text',text)
-        # self.item = self
+        text =  kwargs.get('text') 
+
+
+        kwargs.setdefault("padding", Padding())
+        kwargs.setdefault("push",Push() )
+        kwargs.setdefault("hasBorder",False )
+        kwargs.setdefault("background",None )
+        kwargs.setdefault("lines",1 )
+        kwargs.setdefault("cols",len(text))
+
 
         super().__init__(**kwargs)
 
-        ButtonBase.__init__(self,text)
-        FocusableItem.__init__(self, 1,len(self.text), push, padding, hasBorder, background)
+
+        self.actions:dict = {}
+
+        # ButtonBase.__init__(self,text)
+        # FocusableItem.__init__(self, 1,len(self.text), push, padding, hasBorder, background)
+
+    def addAction(self,key: str | int,c: Callable):
+
+        if isinstance(key,str):
+            if len(key) != 1:
+                raise Exception(f"addKeyAction, key length is {len(key)}")
+            key = ord(key)
+        
+        logger.info(f"Adding key {key}")
 
 
+        self.actions[key] = c
+        # return super().addAction(c)
 
 
     def handleReceivingFocus(self):
+        logger.info("button receiving focus")
         print("shit")
 
     def handleKey(self, c):
-        print("handling")
+
+        if c in self.actions:
+            self.actions[c]()
+
+
+        logger.info(f"Buttonfocusable handling key {c}")
+        # print("handling")
 
 
 # b = ButtonFocusable("hey")
@@ -975,8 +1034,6 @@ class Input(FocusableItem):
 
     def handleKey(self,c):
         logger.info(f"handling key in input {c}")
-
-        logger.info(f"c {c}")
         if c == curses.KEY_ENTER or c == ord("\n"):
             return
 
