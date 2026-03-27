@@ -39,6 +39,15 @@ class ReusableActions():
         return inner
 
 
+    @staticmethod
+    def changeColor2(btn: "Item", color: int ):
+        def inner():
+            win = btn.win
+            win.bkgd(" ", curses.color_pair(color))
+            win.refresh()
+        return inner
+
+
     def changeScreen(self,screen_identifier:str):
         def inner():
             logger.info("Changing screen?")
@@ -156,6 +165,10 @@ class ScreenAPI(Protocol):
     def get_screen_size(self) -> tuple[int, int]: ...
     def traverse(self,direction:Literal["forward","backward"]) -> None: ...
     def get_window(self) -> curses.window: ...
+
+
+class LayoutApi(Protocol):
+    def traverse(self,direction:Literal["forward","backward"]) -> None: ...
 
 class Screen():
 
@@ -561,6 +574,9 @@ class Layout():
             self.register_global_key(item.global_key)
             self.layout_kind = GlobalKeyItem
 
+        item.layout_api = self
+
+
 
         self.items.append(item)
 
@@ -640,7 +656,7 @@ class Layout():
 
             if isinstance(next_item,FocusableItem):
                 logger.info(f"Widget receiving focus {next_item.__class__.__name__}")
-                next_item.handleReceivingFocus()
+                next_item.handleGetFocus()
                 self.spotlight = next_item
                 break
 
@@ -710,6 +726,7 @@ class Item(ABC):
         **kwargs
     ) -> None:
 
+        self.layout_api:LayoutApi
 
         self.has_border = hasBorder
         self.background = background
@@ -739,16 +756,31 @@ class Item(ABC):
 
     
 
+'''
+handleReceiving
+'''
 class FocusableItem(Item,ABC):
 
     # def __init__(self, lines: int, cols: int, push=Push(), padding=Padding(), hasBorder=False, background=None) -> None:
     def __init__(self,**kwargs) -> None:
 
+        self.on_receive_focus:Callable | None = None
+
+
         super().__init__(**kwargs)
         # Item.__init__(self,lines, cols, push, padding, hasBorder, background)
 
+    def handleGetFocus(self):
+        self.handleGetFocusDefault()
+        if self.on_receive_focus != None:
+            self.on_receive_focus()
+
+
+        return None
+
+
     @abstractmethod
-    def handleReceivingFocus(self):
+    def handleGetFocusDefault(self):
         return None
 
     @abstractmethod
@@ -968,7 +1000,7 @@ class ButtonFocusable(ButtonBase,FocusableItem):
         # return super().addAction(c)
 
 
-    def handleReceivingFocus(self):
+    def handleGetFocusDefault(self):
         logger.info("button receiving focus")
         # print("shit")
 
@@ -1018,8 +1050,9 @@ class Input(FocusableItem):
         # )
 
 
-    def handleReceivingFocus(self):
+    def handleGetFocusDefault(self):
         self.win.move(self.cursory,self.cursorx)
+        self.win.refresh()
         return None
 
     def renderItem(self,window:curses.window):
