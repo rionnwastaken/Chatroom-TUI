@@ -614,6 +614,13 @@ class Layout():
             self.spotlight = self.items[ self.traversal_index ]
 
 
+        current_item = self.items[self.traversal_index]
+        if isinstance(current_item,FocusableItem):
+            logger.info(f"Widget receiving focus {current_item.__class__.__name__}")
+            current_item.handleGetFocus()
+
+
+
 
     def traverse(self,direction:Literal["forward","backward"]):
 
@@ -1115,6 +1122,8 @@ class Input(FocusableItem):
         self.win.refresh()
 
 
+
+#hey
 
 
 if __name__ == "__main__":

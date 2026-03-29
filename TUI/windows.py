@@ -12,9 +12,10 @@ import time
 from typing import Callable,Literal,TypedDict,Protocol
 from abc import ABC, abstractmethod
 
-from gui import ButtonFocusable,ButtonGlobalKey,Screen,ScreenHandler,Layout,ReusableActions,Label,Input,Where,Padding,Push
-import gui
+from ui import ButtonFocusable,ButtonGlobalKey, Item,Screen,ScreenHandler,Layout,ReusableActions,Label,Input,Where,Padding,Push
 
+
+import ui
 
 
 logger = logging.getLogger()
@@ -25,7 +26,7 @@ with open("./window.log","w") as f:
 
 
 
-gui.logger = logger
+ui.logger = logger
 
 
 
@@ -215,20 +216,82 @@ class Main():
 
 
         scr = Screen("a")
-        lay = Layout(focusable=True,global_keys=True,where=Where.CENTER_OF_SCREEN)
-        btn = ButtonGlobalKey("hey",'a',background=3)
+        lay = Layout(focusable=True,where=Where.CENTER_OF_SCREEN)
+        btn = ButtonGlobalKey(text="hey",global_key_char='a',background=3)
+        btn_f = ButtonGlobalKey(text="hey",global_key_char='b',background=3)
+        label  = Label("hello")
+
 
         btn.addAction(ReusableActions.changeColor(btn))
+        btn_f.addAction(ReusableActions.changeColor(btn_f))
         # btn2 = ButtonFocusable("hey")
 
 
         lay.add_item(btn)
+        lay.add_item(btn_f)
+        lay.add_item(label)
         scr.add_layout(lay)
 
-        screen_handler.add_screen(scr)
+
+        lay2 = Layout(focusable=True,coordinates={"topx":10,"topy":15})
+        input = Input(hasBorder=True)
+        input2 = Input(hasBorder=True)
+        btn_focus = ButtonFocusable(text="hello",background=2,hasBorder=True)
+        something = ButtonFocusable(text="View messages (A) Send messages (B) Join Chat(C)",background=2,hasBorder=True)
+
+        def f(key,message):
+            key = ord(key)
+
+            def fi():
+                logger.info(message)
+            something.addAction(key,fi)
+
+
+        f('A',"Pressed A")
+        f('B',"Pressed B")
+        f('C',"Pressed C")
 
         
-        logger.info(ButtonGlobalKey.mro())
+        def tr(item:Item):
+
+            def i():
+                item.layout_api.traverse('forward')
+
+            return i
+
+
+        btn_focus.addAction(curses.KEY_RIGHT,tr(btn_focus))
+
+
+
+
+
+        btn_focus.addAction('\n',ReusableActions.changeColor(btn_focus))
+        btn_focus.on_receive_focus = ReusableActions.changeColor2(btn_focus, 3)
+
+
+        lay2.add_item(btn_focus)
+        
+        logger.info(f"Layout traversal index before adding {lay2.traversal_index}")
+
+        lay2.add_item(input)
+        lay2.add_item(input2)
+        lay2.add_item(something)
+
+        lay2.set_spotlight(input)
+
+
+        scr.add_layout(lay2)
+        screen_handler.add_screen(scr)
+
+
+        logger.info(f"Layout traversal  index after adding {lay2.traversal_index}")
+
+
+        scr.set_spotlight(lay2)
+
+        stdsrc.keypad(True)
+        
 
 
 
@@ -246,6 +309,7 @@ class Main():
                 logger.info(f"NEW SIZE {stdsrc.getmaxyx()}")
 
 
+            # logger.info(f"key {c}")
 
             screen_handler.handleKey(c)
 
@@ -253,6 +317,7 @@ class Main():
 
             pass
 
+#test
 
 Main()
 
