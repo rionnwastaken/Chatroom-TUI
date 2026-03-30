@@ -1,7 +1,7 @@
 __pycache__/
 
 *.log
+**/*.log
 
-testing/aaaaaaa.py
-testing/classhit.py
 testing/
+TUI/windows.py
