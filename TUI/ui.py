@@ -900,15 +900,14 @@ class defaultItemAttributes(TypedDict,total=False):
 
 
 
+class ButtonBaseType(defaultItemAttributes):
+     text:Required[str]
 
-class ButtonGlobalKeyType(defaultItemAttributes,total=False):
+
+class ButtonGlobalKeyType(ButtonBaseType,total=False):
      text:Required[str]
      global_key_char:Required[str]
      global_key:int
-
-
-class ButtonFocusableType(defaultItemAttributes,total=False):
-     text:Required[str]
 
 
 
@@ -924,11 +923,7 @@ class ButtonGlobalKey(ButtonBase,GlobalKeyItem):
 
         global_key_char = kwargs.get('global_key_char')
         text = len(kwargs.get('text'))
-        
-        kwargs.setdefault("padding", Padding())
-        kwargs.setdefault("push",Push() )
-        kwargs.setdefault("hasBorder",False )
-        kwargs.setdefault("background",None )
+
         kwargs.setdefault("lines",1 )
         kwargs.setdefault("cols",text )
 
@@ -938,21 +933,8 @@ class ButtonGlobalKey(ButtonBase,GlobalKeyItem):
         if len(global_key_char) > 1:
             raise Exception(f"global key {global_key_char} must be a char")
 
-        # kwargs.pop('glo')
         kwargs['global_key'] = ord(global_key_char)
-
-        # self, text,global_key:str, push=Push(), padding=Padding(), hasBorder=False, background=None,**kwargs
-
-
-        # self.item = self
-
         super().__init__(**kwargs)
-
-        # ButtonBase.__init__(self,text=text,**kwargs)
-        # GlobalKeyItem.__init__(self,ord(global_key), 1,len(self.text), push, padding, hasBorder, background)
-        # GlobalKeyItem.__init__(self, ord(global_key), len(self.text), push, padding, hasBorder, background, lines=1)
-
-
 
 
     def onAction(self):
@@ -972,26 +954,17 @@ class ButtonFocusable(ButtonBase,FocusableItem):
 
 
     # def __init__(self, text, push=Push(), padding=Padding(), hasBorder=False, background=None,**kwargs:Unpack[defaultItemAttributes]) -> None:
-    def __init__(self,**kwargs:Unpack[ButtonFocusableType]) -> None:
+    def __init__(self,**kwargs:Unpack[ButtonBaseType]) -> None:
 
         text =  kwargs.get('text') 
 
-
-        kwargs.setdefault("padding", Padding())
-        kwargs.setdefault("push",Push() )
-        kwargs.setdefault("hasBorder",False )
-        kwargs.setdefault("background",None )
         kwargs.setdefault("lines",1 )
         kwargs.setdefault("cols",len(text))
-
-
         super().__init__(**kwargs)
 
 
         self.actions:dict = {} # type: ignore
 
-        # ButtonBase.__init__(self,text)
-        # FocusableItem.__init__(self, 1,len(self.text), push, padding, hasBorder, background)
 
     def addAction(self,key: str | int,c: Callable): # type: ignore
 
@@ -1021,8 +994,6 @@ class ButtonFocusable(ButtonBase,FocusableItem):
         # print("handling")
 
 
-# b = ButtonFocusable("hey")
-# a = ButtonGlobalKey("was",ord('a'))
 
 
 
@@ -1046,15 +1017,6 @@ class Input(FocusableItem):
 
         super().__init__(**kwargs)
 
-
-        # super().__init__(
-        #     1,
-        #     self.length,
-        #     push=push,
-        #     padding=padding,
-        #     hasBorder=hasBorder,
-        #     background=background,
-        # )
 
 
     def handleGetFocusDefault(self):
