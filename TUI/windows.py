@@ -62,29 +62,38 @@ class Main():
     def coloring(self,stdsrc:curses.window):
 
 
-        for i in range(1,254):
-            curses.init_pair(i,curses.COLOR_WHITE,i)
-        max_lines,max_cols = stdsrc.getmaxyx()
+        for i in range(1, 254):
+            curses.init_pair(i, curses.COLOR_WHITE, i)
 
-        x,y = 0,0
+        max_lines, max_cols = stdsrc.getmaxyx()
+        x, y = 0, 0
         color = 1
-        while (True):
 
-            if color >= 254:
+        size =2
+
+        while color < 254:
+            # Check if we've run out of vertical space
+            if y >= max_lines:
                 break
 
+            # Wrap to next line
             if x >= max_cols:
                 y += 1
                 x = 0
+                if y >= max_lines: break
 
-            win = curses.newwin(1,1,y,x)
-            win.bkgdset(curses.color_pair(color))
-            win.insch("c")
-            win.refresh()
+            # Draw directly to stdsrc instead of creating a window
+            try:
+                # attron sets the color for the next character added
+                stdsrc.attron(curses.color_pair(color))
+                stdsrc.addch(y, x, 'c')
+                stdsrc.attroff(curses.color_pair(color))
+            except curses.error:
+                # This handles the bottom-right corner edge case
+                pass
+
             color += 1
             x += 1
-
-            logger.info(f"color {color}")
 
         stdsrc.refresh()
 
@@ -93,7 +102,6 @@ class Main():
             c = stdsrc.getch()
             if c == -1:
                 continue
-
 
 
 
