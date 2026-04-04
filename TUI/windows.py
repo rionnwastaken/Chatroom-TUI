@@ -116,7 +116,7 @@ class Main():
         stdsrc.refresh()
 
 
-        self.coloring(stdsrc)
+        # self.coloring(stdsrc)
 
 
         max_win_height,max_win_width = 3,10
