@@ -174,13 +174,14 @@ class Screen():
 
     terminal_window:curses.window
 
-    def __init__(self,screen_name_identifier) -> None:
+    def __init__(self,screen_name_identifier,background=None) -> None:
         term_lines,term_cols = Screen.terminal_window.getmaxyx() 
         self.screen_window = curses.newwin(term_lines,term_cols,0,0)
         self.layouts:list["Layout"] = []
         self.spotlight:None | Layout = None
         self.traversal_index = -1 # Starts like that cause when adding layout it increments
         self.screen_name_identifier = screen_name_identifier
+        self.background = background
 
 
         self.id_counter = 0
@@ -208,7 +209,10 @@ class Screen():
 
         for lay in self.layouts:
             lay.show()
-        self.screen_window.bkgd(" ",curses.color_pair(1))
+
+        if self.background != None:
+            self.screen_window.bkgd(" ",curses.color_pair(self.background))
+
         self.screen_window.refresh()
 
         logger.info(f"{'-'*5}RENDER LAYOUTS {'-'*5}")
