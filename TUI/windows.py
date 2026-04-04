@@ -305,30 +305,30 @@ class Main():
 
 
 
-        while (True):
-
-            c = stdsrc.getch()
-            if c == -1:
-                continue
-
-            logger.info(f"virtx {virtx}")
-
-            if c == curses.KEY_LEFT:
-                move('backward')
-
-            elif c == curses.KEY_RIGHT:
-                move('forward')
-
-            elif c == curses.KEY_BACKSPACE:
-                erase()
-                pass
-
-            else:
-                add(c)
-
-
-            logger.info(f"Current::\t virtx {virtx} winx {winx} viewx {viewx}")
-
+        # while (True):
+        #
+        #     c = stdsrc.getch()
+        #     if c == -1:
+        #         continue
+        #
+        #     logger.info(f"virtx {virtx}")
+        #
+        #     if c == curses.KEY_LEFT:
+        #         move('backward')
+        #
+        #     elif c == curses.KEY_RIGHT:
+        #         move('forward')
+        #
+        #     elif c == curses.KEY_BACKSPACE:
+        #         erase()
+        #         pass
+        #
+        #     else:
+        #         add(c)
+        #
+        #
+        #     logger.info(f"Current::\t virtx {virtx} winx {winx} viewx {viewx}")
+        #
 
     
 
