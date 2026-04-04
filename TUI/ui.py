@@ -174,13 +174,14 @@ class Screen():
 
     terminal_window:curses.window
 
-    def __init__(self,screen_name_identifier) -> None:
+    def __init__(self,screen_name_identifier,background=None) -> None:
         term_lines,term_cols = Screen.terminal_window.getmaxyx() 
         self.screen_window = curses.newwin(term_lines,term_cols,0,0)
         self.layouts:list["Layout"] = []
         self.spotlight:None | Layout = None
         self.traversal_index = -1 # Starts like that cause when adding layout it increments
         self.screen_name_identifier = screen_name_identifier
+        self.background = background
 
 
         self.id_counter = 0
@@ -208,7 +209,10 @@ class Screen():
 
         for lay in self.layouts:
             lay.show()
-        self.screen_window.bkgd(" ",curses.color_pair(1))
+
+        if self.background != None:
+            self.screen_window.bkgd(" ",curses.color_pair(self.background))
+
         self.screen_window.refresh()
 
         logger.info(f"{'-'*5}RENDER LAYOUTS {'-'*5}")
@@ -306,6 +310,7 @@ class Layout():
         where:Where | None = None,
         focusable=True,
         hasBorder=False,
+        backgorund=None,
         axis:Literal["horizontal","vertical"] = "horizontal",
         padding=Padding(),
         push=Push(),
@@ -321,6 +326,7 @@ class Layout():
         self.layout_window:curses.window
 
         self.hasBorder = hasBorder
+        self.background = backgorund
 
         self.padding = padding
         self.push = push
@@ -544,7 +550,9 @@ class Layout():
                     # padding.bottom
                     ])
 
-        self.layout_window.bkgd(" ",curses.color_pair(2))
+
+        if self.background != None:
+            self.layout_window.bkgd(" ",curses.color_pair(self.background))
         self.layout_window.refresh()
 
         logger.info(f"{'-'*10}END RENDERING LAYOUT{'-'*10}")
