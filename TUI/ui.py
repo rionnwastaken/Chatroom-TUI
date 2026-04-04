@@ -306,6 +306,7 @@ class Layout():
         where:Where | None = None,
         focusable=True,
         hasBorder=False,
+        backgorund=None,
         axis:Literal["horizontal","vertical"] = "horizontal",
         padding=Padding(),
         push=Push(),
@@ -321,6 +322,7 @@ class Layout():
         self.layout_window:curses.window
 
         self.hasBorder = hasBorder
+        self.background = backgorund
 
         self.padding = padding
         self.push = push
@@ -544,7 +546,9 @@ class Layout():
                     # padding.bottom
                     ])
 
-        self.layout_window.bkgd(" ",curses.color_pair(2))
+
+        if self.background != None:
+            self.layout_window.bkgd(" ",curses.color_pair(self.background))
         self.layout_window.refresh()
 
         logger.info(f"{'-'*10}END RENDERING LAYOUT{'-'*10}")
