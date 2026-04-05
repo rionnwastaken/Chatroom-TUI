@@ -1011,7 +1011,7 @@ class Input(FocusableItem):
 
         min_width = kwargs.setdefault('min_width',10)
 
-
+        self.filter = None
         self.length = kwargs.get('min_width')
         self.win:curses.window
         self.cursorx = -1 if not kwargs.get('hasBorder') else 0
@@ -1026,7 +1026,7 @@ class Input(FocusableItem):
         super().__init__(**kwargs)
 
 
-
+    
     def handleGetFocusDefault(self):
         self.win.move(self.cursory,self.cursorx)
         self.win.refresh()
@@ -1037,7 +1037,7 @@ class Input(FocusableItem):
 
         if self.background != None:
             self.win.bkgd(" ", curses.color_pair(self.background))
-
+#
         if self.has_border:
             window.box()
         self.max_line,self.max_col = window.getmaxyx()
@@ -1050,9 +1050,14 @@ class Input(FocusableItem):
 
     def handleKey(self,c):
         logger.info(f"handling key in input {c}")
+
+        
+
+
+
+
         if c == curses.KEY_ENTER or c == ord("\n"):
             return
-
         
         if c == curses.KEY_BACKSPACE:
 
@@ -1072,6 +1077,19 @@ class Input(FocusableItem):
             # self.win.move(self.cursory,self.cursorx)
             self.win.refresh()
             return
+
+
+        if self.filter != None:
+            should_allow_key = self.filter(c)
+
+            if should_allow_key == False:
+                return
+
+            elif should_allow_key:
+                pass
+
+            else:
+                raise Exception(f"Error in Input self.filter, it should return boolean but returned {type(should_allow_key)}")
 
 
         self.cursorx += 1
