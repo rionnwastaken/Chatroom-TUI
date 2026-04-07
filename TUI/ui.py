@@ -77,6 +77,7 @@ class ScreenHandler():
             logger.info(f"{screen.screen_name_identifier} cannot be added twice")
             return
 
+        logger.info(f"Adding screen {screen.screen_name_identifier}")
         self.screens[screen.screen_name_identifier] = screen
         self.set_spotlight(screen.screen_name_identifier)
 
@@ -103,7 +104,7 @@ class ScreenHandler():
 
         screen:Screen | None = self.screens.get(screen_name_identifier)
         if screen == None:
-            raise Exception(f"'{screen_name_identifier}' screen was not found")
+            raise Exception(f"'{screen_name_identifier}' screen was not found\nMake sure the screen exists before setting it as spotlight")
         self.spotlight = screen
         self.spotlight.show()
 
