@@ -1,7 +1,8 @@
 import curses
 from enum import StrEnum,auto
+from io import DEFAULT_BUFFER_SIZE
 from types import NoneType
-from typing import Callable,Literal,TypedDict,Protocol,Required,NotRequired, Unpack
+from typing import Callable, Dict,Literal, Tuple,TypedDict,Protocol,Required,NotRequired, Unpack
 from abc import ABC, abstractmethod
 import logging
 
@@ -11,6 +12,33 @@ logger:logging.Logger
 '''
 Spotlight is the current screen that receives the input
 '''
+
+
+
+
+
+class DefaultColors:
+    WIDGET_NORMAL = 1
+    WIDGET_FOCUSED = 2
+
+
+    LAYOUT_NORMAL = 100
+    LAYOUT_FOCUSED = 101
+
+    @staticmethod
+    def init() -> None:
+        logger.info(f"Init default colors {curses.has_colors()}")
+        if not curses.has_colors():
+            return
+        d = DefaultColors
+        curses.init_pair(d.WIDGET_NORMAL,curses.COLOR_WHITE,-1)
+        curses.init_pair(d.WIDGET_FOCUSED,curses.COLOR_YELLOW,-1)
+        curses.init_pair(3,curses.COLOR_GREEN,-1)
+
+
+        curses.init_pair(d.LAYOUT_NORMAL,curses.COLOR_WHITE,-1)
+        curses.init_pair(d.LAYOUT_FOCUSED,curses.COLOR_GREEN,-1)
+
 
 
 class ReusableActions():
@@ -43,6 +71,21 @@ class ReusableActions():
     def changeColor2(btn: "Item", color: int ):
         def inner():
             win = btn.win
+            win.bkgd(" ", curses.color_pair(color))
+            win.refresh()
+        return inner
+
+    @staticmethod
+    def changeColor3(btn: "Item", colors: list[int] ):
+        index = -1
+        def inner():
+            nonlocal index
+            win = btn.win
+
+            index += 1
+            if index >= len(colors):
+                index = 0
+            color = colors[index]
             win.bkgd(" ", curses.color_pair(color))
             win.refresh()
         return inner
@@ -98,8 +141,6 @@ class ScreenHandler():
         if self.spotlight != None:
             self.spotlight.get_window().clear()
             self.spotlight.get_window().refresh()
-            # self.terminal_window.clear()
-            # self.terminal_window.refresh()
             #
 
         screen:Screen | None = self.screens.get(screen_name_identifier)
@@ -168,8 +209,8 @@ class ScreenAPI(Protocol):
     def get_window(self) -> curses.window: ...
 
 
-class LayoutApi(Protocol):
-    def traverse(self,direction:Literal["forward","backward"]) -> None: ...
+# class LayoutApi(Protocol):
+#     def traverse(self,direction:Literal["forward","backward"]) -> None: ...
 
 class Screen():
 
@@ -207,12 +248,23 @@ class Screen():
 
 
     def show(self):
+        """
+        Renders each layout
+        Makes the layout spotlight handle_receiving_focus
+        """
+
 
         for lay in self.layouts:
             lay.show()
 
         if self.background != None:
             self.screen_window.bkgd(" ",curses.color_pair(self.background))
+
+
+        
+        if self.spotlight != None: 
+            self.spotlight.handle_receive_focus('forward')
+
 
         self.screen_window.refresh()
 
@@ -239,12 +291,18 @@ class Screen():
             raise Exception(f"Screen [{self.screen_name_identifier}]  func [set_spotlight] traversal_index was not found")
 
 
-    def traverse(self,direction:Literal["forward","backward"]):
+    def traverse(self,direction:Literal["forward","backward"]) :
+        """ 
+
+        Gives focus to the next layout
+        if only 1 layout == giving focus to that same layout; calls -> layout_receive_focus(direction)
+        """
+
 
         
         if len(self.layouts) == 1:
-            self.layouts[0].layout_receive_focus(direction)
-            return 
+            self.layouts[0].handle_receive_focus(direction)
+            return  
 
         logger.info("Screen, traversing to a new layout")
 
@@ -256,6 +314,10 @@ class Screen():
 
         count = 0
         while (True):
+
+            previous_layout:Layout = self.layouts[self.traversal_index]
+            previous_layout.handle_lose_focus(direction)
+
             self.traversal_index += magnitude
 
             if self.traversal_index < 0:
@@ -265,10 +327,11 @@ class Screen():
                 self.traversal_index = 0 
 
             next_layout = self.layouts[self.traversal_index]
-            logger.info(f"Next layout focusable? {next_layout.focusable}")
+            logger.info(f"Next layout focusable? {self.layoutIsFocusable(next_layout)}")
 
-            if next_layout.focusable:
-                next_layout.layout_receive_focus(direction)
+            
+            if self.layoutIsFocusable(next_layout):
+                next_layout.handle_receive_focus(direction)
                 self.spotlight = next_layout
                 break
 
@@ -276,9 +339,19 @@ class Screen():
             if count >= len(self.layouts) + 5:
                 raise Exception("class Screen func [traverse] There is error in travesal infinite while loop")
 
+        return  
 
         # if (self.traversal)
 
+    
+    def layoutIsFocusable(self,layout:"Layout") -> bool:
+
+        if isinstance(layout,FocusableLayout) or isinstance(layout,GlobalKeyLayout):
+            return True
+
+        return False
+
+        
 
 
 
@@ -291,46 +364,43 @@ class Screen():
         raise Exception(f"class [Screen] func [handleKey] does not have a layout in spotlight")
 
 
+class LayoutType(TypedDict,total=False):
+    coordinates:Coordinates | None
+    where:Where | None
+    hasBorder:bool
+    background:int
+    axis:Literal["horizontal","vertical"]
+    padding:Padding
+    push:Push
 
 
-''' 
-A layout is a window that holds items
-It calculates the  required dimensions to fit the items
-It controls which item receives the keystroke
-A layout can only of one type; focusable or have global keys which means when a layout has focus , it should contain
-items only of one type but it can also have of no type (labels for example)
 
 
-Layout creates the derevied windows for the Items
-
-'''
-class Layout():
+class Layout(ABC):
+    ''' 
+    A layout is a window that holds items
+    It calculates the  required dimensions to fit the items
+    Parent of FocusableLayout and GlobalKeyLayout
+    Layout creates the derevied windows for the Items
+    '''
     def __init__(
-        self,
-        coordinates:Coordinates | None  = None,
-        where:Where | None = None,
-        focusable=True,
-        hasBorder=False,
-        backgorund=None,
-        axis:Literal["horizontal","vertical"] = "horizontal",
-        padding=Padding(),
-        push=Push(),
+        self,**kwargs:Unpack[LayoutType]
     ) -> None:
 
         self.id:int
+        self.items:list["Item"] = [] 
 
+        #focusable
+        # self.traversal_index = -1
 
-        self.focusable = focusable
-        self.items:list["Item"] = []
-        self.axis = axis
-        self.traversal_index = -1
+        self.axis = kwargs.get('axis') or 'horizontal'
         self.layout_window:curses.window
 
-        self.hasBorder = hasBorder
-        self.background = backgorund
+        self.hasBorder = kwargs.get('hasBorder') or True
+        self.background = kwargs.get('background') or DefaultColors.LAYOUT_NORMAL
 
-        self.padding = padding
-        self.push = push
+        self.padding = kwargs.get('padding') or Padding()
+        self.push = kwargs.get('push') or Push()
 
         #Length,margins,padding everything
         self.total_width = 0 
@@ -339,11 +409,12 @@ class Layout():
         self.item_current_posx = 0
         self.item_current_posy = 0
 
-        self.where = where
-        self.coordinates = coordinates
-        if coordinates != None:
-            self.topx = coordinates["topx"]
-            self.topy = coordinates["topy"]
+        self.where = kwargs.get('where')
+        self.coordinates = kwargs.get('coordinates')
+
+        if self.coordinates != None:
+            self.topx = self.coordinates["topx"]
+            self.topy = self.coordinates["topy"]
 
         if self.where == None and self.coordinates == None:
             raise Exception("Currently it is not supported to automatically position a layout without coordinates or where   ")
@@ -353,9 +424,6 @@ class Layout():
             raise Exception("Cannot use where and coordinates at the same time")
 
 
-
-
-        self.axis = axis
         self.min_height = None
         self.min_width = None
 
@@ -366,7 +434,7 @@ class Layout():
 
 
 
-        self.registered_global_keys = []
+        self.registered_global_keys:Dict[int,Callable] = {}
         self.layout_kind = None
         self.spotlight:Item | None = None
 
@@ -422,6 +490,7 @@ class Layout():
 
 
         
+        #TODO implement min width and maxwidth 
 
         
         # if self.min_width != None and self.total_width < self.min_width:
@@ -553,53 +622,140 @@ class Layout():
 
 
         if self.background != None:
-            self.layout_window.bkgd(" ",curses.color_pair(self.background))
+            logger.info(f"Layout setting background {DefaultColors.LAYOUT_NORMAL}")
+            self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_NORMAL))
+
         self.layout_window.refresh()
+
+
+        # if isinstance(self.spotlight,FocusableItem):
+        #     self.spotlight.handleGetFocus()
 
         logger.info(f"{'-'*10}END RENDERING LAYOUT{'-'*10}")
     
-    def register_global_key(self,key):
+
+    def register_global_key(self,key:int | str,callable:Callable):
+        """
+        Meant to be used for keys like esc or arrowkeys
+        """ 
+
+        if isinstance(key,str):
+            l = len(key)
+
+            if len(key) > 1:
+                raise Exception(f"Cannot register_global_key where key has length greater than 1. length: {key}")
+            key = ord(key)
+
+
         if key in self.registered_global_keys:
             raise Exception(f"Cannot register the same key twice ({key},'{chr(key)}') in the same layout")
 
-        self.registered_global_keys.append(key)
+        self.registered_global_keys[key] = callable
 
 
+    
     def add_item(self,item:"Item"):
-        logger.info(f"start traversal index in additem {self.traversal_index}")
+        """
+        Adds items to the layout
+        self.win of the item is not yet created
+        """
 
-        if (isinstance(item,StaticItem)):
-            pass
+        allow,error = self.validate_item(item)
 
-        elif (self.layout_kind != None and not isinstance(item,self.layout_kind)):
-            raise Exception(f"Item is not subclass of {self.layout_kind}\nA layout should only have items of the same kind")
+        if not allow:
+            if isinstance(error,Exception):
+                raise error
+            
+            raise Exception("In not allow it should raise error,fix it")
 
-
-
-        if (isinstance(item,FocusableItem)):
-            self.layout_kind = FocusableItem
-
-        if (isinstance(item,GlobalKeyItem)):
-            self.register_global_key(item.global_key)
-            self.layout_kind = GlobalKeyItem
 
         item.layout_api = self
-
-
-
         self.items.append(item)
 
-        if isinstance(item,FocusableItem):
-            self.set_spotlight(item)
-            # self.traversal_index += 1
-            # logger.info(f"dumbass ti bef {self.traversal_index -1} af {self.traversal_index }")
 
-        logger.info(f"end traversal index in additem {self.traversal_index}")
+    @abstractmethod
+    def validate_item(self,item:"Item") -> Tuple[bool,None | Exception]  :
+        """
+        True -> Item belongs to the layout
+        False -> There is an error and program should raise Error
+        """
+        raise NotImplementedError()
+
+
+    def handle_receive_focus(self,from_where:Literal["forward","backward"]):
+        """ Can be overriden to hook more functionality """
+        if self.hasBorder:
+            self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_FOCUSED))
+            self.layout_window.refresh()
+        logger.info("Layout receive focus")
+
+
+    def handle_lose_focus(self,from_where:Literal["forward","backward"]):
+        """ Can be overriden to hook more functionality """
+        if self.hasBorder:
+            self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_NORMAL))
+            self.layout_window.refresh()
+        logger.info("Layout  losing focus")
+
+
+
+
+    @abstractmethod
+    def traverse(self,direction:Literal["forward","backward"]):
+        pass
+
+
+    def hide(self):
+        self.layout_window.clear()
+        self.layout_window.refresh()
+
+
+    @abstractmethod
+    def handleKey(self,c):
+        raise NotImplementedError()
+
+
+    def handleTraverseKey(self,c) -> bool:
+        """True means is traversal and the caller should abort handling the key"""
+        if c == ord("\t"):
+            self.traverse("forward")
+            return True
+
+        if c == curses.KEY_BTAB:
+            self.traverse("backward")
+            return True
+
+        return False
+
+
+
+
+
+
+class FocusableLayout(Layout):
+    """
+    Can contain FocusableItem and DecorationItem
+    Spotlight can only be FocusableItem
+    """ 
+
+    def __init__(
+            self,**kwargs:Unpack[LayoutType]
+    ) -> None:
+
+        super().__init__(**kwargs)
+
+    def add_item(self,item:"Item"):
+        super().add_item(item)
+        self.set_spotlight(item)
+
+    def validate_item(self, item: "Item"):
+        if isinstance(item,FocusableItem) or isinstance(item,DecorationItem):
+            return True,None
+
+        return False, Exception(f"Item {item.__class__.__name__} is not compatible with Layout {self.__class__.__name__}")
 
 
     def set_spotlight(self,item:"Item"):
-        if isinstance(item,GlobalKeyItem): 
-            raise Exception("class [Layout] func [set_spotlight] cannot set spotlight when item is of GlobalKeyItem")
 
         self.spotlight = item
 
@@ -610,9 +766,29 @@ class Layout():
                 found = True
 
         if not found:
-            raise Exception(f"class [Layout]  func [set_spotlight] item was not found in items")
+            raise Exception(f"class [FocusableLayout]  func [set_spotlight] item was not found in items")
 
-    def layout_receive_focus(self,from_where:Literal["forward","backward"]):
+
+    def handleKey(self,c):
+
+        if c in self.registered_global_keys:
+            self.registered_global_keys[c]()
+            return
+
+        if self.handleTraverseKey(c):
+            return
+
+        if isinstance(self.spotlight,FocusableItem):
+            self.spotlight.handleKey(c)
+
+
+
+    def handle_receive_focus(self,from_where:Literal["forward","backward"]):
+
+        logger.info("before calling supa")
+
+        logger.info("after calling supa")
+
 
         if from_where == 'forward':
             self.traversal_index = 0
@@ -625,21 +801,21 @@ class Layout():
 
         current_item = self.items[self.traversal_index]
         if isinstance(current_item,FocusableItem):
-            logger.info(f"Widget receiving focus {current_item.__class__.__name__}")
+            logger.info(f"layout_receive_focus Widget receiving focus {current_item.__class__.__name__}")
             current_item.handleGetFocus()
 
-
-
+        super().handle_receive_focus(from_where)
 
     def traverse(self,direction:Literal["forward","backward"]):
+        """ 
+        'forward' -> Traverse to next item
+        'backward' -> Traverse to preceding item
 
-        #Request switching to another layout
+        Going out either edge calls screen.traverse(direction)
+
+        """
+        
         logger.info(f"Traversing in Layout, and kind is {self.layout_kind}")
-
-
-        if self.layout_kind == GlobalKeyItem: 
-            self.screen_api.traverse(direction)
-            return
 
 
         magnitude = 1 if direction == "forward" else -1
@@ -651,27 +827,30 @@ class Layout():
         while (True):
             previous_item = self.items[self.traversal_index]
 
+            if isinstance(previous_item,FocusableItem):
+                previous_item.handleLoseFocus()
+
             self.traversal_index += magnitude
 
             if self.traversal_index < 0:
                 is_there_next_layout = self.screen_api.traverse("backward")
-                # self.traversal_index = len(self.items) - 1
+                return
 
 
-            #Going forward means changing screen and now  when this receives focus it should
-            #be the first one,
+
 
             #Go to next layout
             if self.traversal_index >= len(self.items):
                 self.traversal_index = -1 
                 is_there_next_layout = self.screen_api.traverse("forward")
+                return
 
 
 
             next_item = self.items[self.traversal_index]
 
             if isinstance(next_item,FocusableItem):
-                logger.info(f"Widget receiving focus {next_item.__class__.__name__}")
+                logger.info(f"traverse Widget receiving focus {next_item.__class__.__name__}")
                 next_item.handleGetFocus()
                 self.spotlight = next_item
                 break
@@ -681,51 +860,64 @@ class Layout():
                 raise Exception("class Layout func [traverse] There is error in travesal infinite while loop")
 
 
-    def hide(self):
-        self.layout_window.clear()
-        self.layout_window.refresh()
 
+
+class GlobalKeyLayout(Layout):
+    """
+    Can contain GlobalKeyItem and DecorationItem
+    """ 
 
     def handleKey(self,c):
 
-        if c == ord("\t"):
-            self.traverse("forward")
-            return
-
-        if c == curses.KEY_BTAB:
-            self.traverse("backward")
+        if c in self.registered_global_keys:
+            self.registered_global_keys[c]()
             return
 
 
-        if self.layout_kind == GlobalKeyItem: 
-            found_item = False
-            for item in self.items:
-                #:
-                if isinstance(item,GlobalKeyItem):
-                    global_key = item.global_key
-                    if c == global_key:
-                        # logger.info("Found global key item")
-                        found_item = True
-                        item.onAction()
-            # logger.info(f"Found item {found_item}, length items {len(self.items)}, c={c,chr(c)}")
+        if self.handleTraverseKey(c):
+            return
 
-        else:
-            # logger.info("There are NO global keys")
-            if isinstance(self.spotlight,FocusableItem):
-                self.spotlight.handleKey(c)
-                # raise Exception("class [Layout] func [handleKey] cannot handle key when spotlight is None")
+        for item in self.items:
+            if isinstance(item,GlobalKeyItem):
+                global_key = item.global_key
+                if c == global_key:
+                    item.onAction()
 
-            
 
-        pass
+    def validate_item(self, item: "Item"):
+        if isinstance(item,GlobalKeyItem) or isinstance(item,DecorationItem):
+            return True,None
+
+        return False, Exception(f"Item {item.__class__.__name__} is not compatible with Layout {self.__class__.__name__}")
+
+    def traverse(self,direction:Literal["forward","backward"]):
+        """ 
+        'forward' -> Traverse to next item
+        'backward' -> Traverse to preceding item
+
+        Going out either edge calls screen.traverse(direction)
+
+        """
+        logger.info(f"Traversing in Layout, and kind is {self.layout_kind}")
+        self.screen_api.traverse(direction)
+
+
+
+
+class DecorationLayout(Layout):
+    """
+    Layout that is not focusable , which means it cannot handle keys
+    """
+    pass
+
+
+
+
 
 
 '''
 Item can hold anything, it only cares about its dimensions 
 Item is widget holder for example for labels ,inputs
-Item cannot be focusable and have global_key at the same time
-When a layout is of type global, all of its items must be of type global_key
-When focusable is False and global key is None, it means its a static item
 '''
 class Item(ABC):
 
@@ -742,7 +934,7 @@ class Item(ABC):
         **kwargs
     ) -> None:
 
-        self.layout_api:LayoutApi
+        self.layout_api:Layout
 
         self.has_border = hasBorder
         self.background = background
@@ -770,6 +962,12 @@ class Item(ABC):
     def renderItem(self,window:curses.window):
         raise NotImplementedError()
 
+
+
+class DecorationItem(Item,ABC):
+    def __init__(self,**kwargs) -> None:
+        super().__init__(**kwargs)
+
     
 
 '''
@@ -781,6 +979,8 @@ class FocusableItem(Item,ABC):
     def __init__(self,**kwargs) -> None:
 
         self.on_receive_focus:Callable | None = None
+        self.on_lose_focus:Callable | None = None
+
 
 
         super().__init__(**kwargs)
@@ -792,11 +992,20 @@ class FocusableItem(Item,ABC):
             self.on_receive_focus()
 
 
-        return None
+        # return None
+
+    def handleLoseFocus(self):
+        self.handleLoseFocusDefault()
+        if self.on_lose_focus != None:
+            self.on_lose_focus()
 
 
     @abstractmethod
     def handleGetFocusDefault(self):
+        return None
+
+    @abstractmethod
+    def handleLoseFocusDefault(self):
         return None
 
     @abstractmethod
@@ -805,32 +1014,35 @@ class FocusableItem(Item,ABC):
 
 
 class GlobalKeyItem(Item,ABC):
+    """
+    Item that does action when its global_key is pressed
+    """
 
     # def __init__(self,global_key,lines: int, cols: int, push=Push(), padding=Padding(), hasBorder=False, background=None) -> None:
     def __init__(self,global_key,global_key_char,**kwargs) -> None:
         self.global_key = global_key
         super().__init__(**kwargs)
         # Item.__init__(self,lines, cols, push, padding, hasBorder, background)
-
         
 
     @abstractmethod
     def onAction(self):
         return None
 
-class StaticItem(Item):
-    pass
 
 
-
-
-'''Here lines and cols dont take into considerations the space of the window borders '''
-class Label(StaticItem):
-    def __init__(self,text,push=Push(), padding=Padding(),hasBorder=False,background=None) -> None:
+class Label(DecorationItem):
+    '''
+    Item to just show text
+    '''
+    def __init__(self,text,**kwargs) -> None:
         self.length = len(text)
         self.text = text
         self.win:curses.window
-        super().__init__(1,self.length, push=push, padding=padding,hasBorder=hasBorder,background=background)
+
+        kwargs.setdefault('cols',self.length)
+        kwargs.setdefault('lines',1)
+        super().__init__(**kwargs)
 
 
     def renderItem(self,window:curses.window):
@@ -865,9 +1077,6 @@ class ButtonBase(Item,ABC):
         self.actions:list[Callable] = []
 
         super().__init__(**kwargs)
-        # self.item:Item
-        # super().__init__(lines, cols, push, padding, hasBorder, background)
-
         
 
 
@@ -877,6 +1086,10 @@ class ButtonBase(Item,ABC):
 
         if self.background != None:
             self.win.bkgd(" ", curses.color_pair(self.background))
+
+        else:
+            #Use default color
+            self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_NORMAL))
 
         if not self.has_border:
             logger.info(f"Window size {window.getmaxyx()} and length text = {len(self.text)}")
@@ -961,8 +1174,6 @@ class ButtonGlobalKey(ButtonBase,GlobalKeyItem):
 
 class ButtonFocusable(ButtonBase,FocusableItem):
 
-
-    # def __init__(self, text, push=Push(), padding=Padding(), hasBorder=False, background=None,**kwargs:Unpack[defaultItemAttributes]) -> None:
     def __init__(self,**kwargs:Unpack[ButtonBaseType]) -> None:
 
         text =  kwargs.get('text') 
@@ -975,7 +1186,7 @@ class ButtonFocusable(ButtonBase,FocusableItem):
         self.actions:dict = {} # type: ignore
 
 
-    def addAction(self,key: str | int,c: Callable): # type: ignore
+    def addAction(self,key: str | int,callable: Callable): # type: ignore
 
         if isinstance(key,str):
             if len(key) != 1:
@@ -985,13 +1196,24 @@ class ButtonFocusable(ButtonBase,FocusableItem):
         logger.info(f"Adding key {key}")
 
 
-        self.actions[key] = c
+        self.actions[key] = callable
         # return super().addAction(c)
 
 
     def handleGetFocusDefault(self):
+
+        if self.has_border:
+            self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_FOCUSED))
+            self.win.refresh()
+            logger.info("focusablebutton chaning color")
         logger.info("button receiving focus")
         # print("shit")
+
+    def handleLoseFocusDefault(self):
+        if self.has_border:
+            self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_NORMAL))
+            self.win.refresh()
+        logger.info("button loosing focus")
 
     def handleKey(self, c):
 
