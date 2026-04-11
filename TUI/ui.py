@@ -122,7 +122,7 @@ class ScreenHandler():
 
         logger.info(f"Adding screen {screen.screen_name_identifier}")
         self.screens[screen.screen_name_identifier] = screen
-        self.set_spotlight(screen.screen_name_identifier)
+        # self.set_spotlight(screen.screen_name_identifier)
 
     def removeLight(self):
         self.spotlight = None
