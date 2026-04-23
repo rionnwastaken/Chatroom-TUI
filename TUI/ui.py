@@ -1,10 +1,14 @@
 import curses
-from enum import StrEnum,auto
+from enum import IntEnum, StrEnum,auto
 from io import DEFAULT_BUFFER_SIZE
 from types import NoneType
 from typing import Callable, Dict,Literal, Tuple,TypedDict,Protocol,Required,NotRequired, Unpack
 from abc import ABC, abstractmethod
 import logging
+
+from typing import cast
+from UI.properties import Where,Padding,Push,Direction,Status
+from UI.types import ButtonBaseType,Coordinates,LayoutType,ButtonGlobalKeyType,FocusableClientType,ItemAttributesType, ScreenType
 
 
 logger:logging.Logger
@@ -13,6 +17,17 @@ logger:logging.Logger
 Spotlight is the current screen that receives the input
 '''
 
+
+
+class Direction(IntEnum):
+    FORWARD = auto()
+    BACKWARD = auto()
+    JUMP = auto()
+
+
+class Status(IntEnum):
+    OK = auto()
+    ERR = auto()
 
 
 
@@ -44,68 +59,246 @@ class DefaultColors:
 class ReusableActions():
 
 
-    def __init__(self,screenhandler:"ScreenHandler") -> None:
-        self.screenhandler = screenhandler 
+class GlobalFocusManager:
+    """ """
+    pass
+
+
+
+class FocusManager:
+
+    def __init__(self) -> None:
+        self.clients:list["FocusableClient"]  = []
+        self.pos = -1 #As clients are added, it increases, so to start with the correct index
+        self.spotlight:FocusableClient | None = None
+
+
+        self.clients_map:dict[object,FocusableClient] = {}
+
+
+        self.focus_parent:FocusManager | None = None
+
+
+        self.should_empty_layout_be_focusable = False
+
+
+        logger.info(f"Spotlight exists {self.spotlight}")
+
+
+    def __len__(self):
+        """
+        Length of self.clients
+        """     
+        return len(self.clients)
+
+    def add_client(self,client:"FocusableClient"):
+        if client == None:
+            raise Exception("Error: Trying to add client that is None")
+
+        if not isinstance(client,FocusableClient):
+            raise Exception("Client is not instance of Focusable Client")
+
+
+        self.clients.append(client)
+        self.spotlight = client
+        self.pos = self.pos + 1
+
+
+
+        logger.info(f"Client id is {client.id} | {client} ")
+        if client.id == None: return
+
+        if self.clients_map.get(client.id) != None:
+            raise Exception(f"Error: Adding client that has the same id as {self.clients_map.get(client.id)}")
+
+        self.clients_map[client.id] = client
+
+
+    def tell_current_client_lose_focus(self):
+        if self.spotlight != None:
+            self.spotlight.handleLoseFocus(Direction.JUMP)
         pass
 
 
-    @staticmethod
-    def changeColor(btn: "Item", cols: list | None = None):
-        if cols is None:
-            cols = [4, 5]
-        x = -1  # fresh x per changeColor(btn) call ✓
+    def tell_current_client_gain_focus(self):
+        if self.spotlight != None:
+            self.spotlight.handleGetFocus(Direction.JUMP)
+        pass
+    
+    
+    def set_spotlight(self,client:"FocusableClient") -> Status:
+        """
+        Set the spotlight by reference
+        """ 
 
-        def inner():
-            nonlocal x
-            # curses.curs_set(0)
-            win = btn.win
-            x = (x + 1) % len(cols)
-            win.bkgd(" ", curses.color_pair(cols[x]))
-            win.refresh()
-            btn.background = cols[x]
-            # logger.info(f"Changing btn color {cols[x]}")
-        return inner
+        self.tell_current_client_lose_focus()
 
+        if client not in self.clients:
+            return Status.ERR
 
-    @staticmethod
-    def changeColor2(btn: "Item", color: int ):
-        def inner():
-            win = btn.win
-            win.bkgd(" ", curses.color_pair(color))
-            win.refresh()
-        return inner
+        index = self.clients.index(client)
+        self.pos = index
+        self.spotlight = client
 
-    @staticmethod
-    def changeColor3(btn: "Item", colors: list[int] ):
-        index = -1
-        def inner():
-            nonlocal index
-            win = btn.win
+        self.tell_current_client_gain_focus()
+        
+        return Status.OK
 
-            index += 1
-            if index >= len(colors):
-                index = 0
-            color = colors[index]
-            win.bkgd(" ", curses.color_pair(color))
-            win.refresh()
-        return inner
+    def set_spotlight_byid(self,id:object):
+
+        client = self.clients_map.get(id)
+
+        if client == None:
+            raise Exception(f"Error: Client could not be found with the id of {id}")
+
+        self.set_spotlight(client)
 
 
-    def changeScreen(self,screen_identifier:str):
-        def inner():
-            logger.info("Changing screen?")
-            self.screenhandler.set_spotlight(screen_identifier)  
-        return inner
+    def set_spotlight_first(self):
+        self.tell_current_client_lose_focus()
+
+        
+        if len(self.clients) >= 1:
+            self.pos = 0
+            self.spotlight = self.clients[0]
+            self.tell_current_client_gain_focus()
+
+            logger.info(f"Spotlight first {self.spotlight} ")
 
 
 
+    def set_spotlight_last(self):
+        if len(self.clients) >= 1:
+            self.tell_current_client_lose_focus()
+            self.pos = len(self.clients) -1
+            self.spotlight = self.clients[-1]
+            self.tell_current_client_gain_focus()
 
-class Where(StrEnum):
-    CENTER_OF_SCREEN = auto()
 
-class Coordinates(TypedDict):
-    topx:int
-    topy:int
+    def move(self,direction:Direction):
+
+        if self.spotlight != None:
+            self.spotlight.handleLoseFocus(direction)
+
+        previous_pos = self.pos
+        power = 1 if direction == Direction.FORWARD else -1
+
+
+        if len(self.clients ) >= 1:
+            self.pos = (self.pos + power) % len(self.clients)
+        
+
+
+
+        """
+        If we move passed  the edge and wind up in another layout
+        """
+        
+        walked_off_the_edge = False
+        logger.info(f"is insance {isinstance(self,FocusableClient)}")
+        
+
+        
+        #Has moved passed the edge
+        if direction == Direction.FORWARD and previous_pos > self.pos:
+            logger.info(f"FocusManager: RIGHT EDGE; We have moved passed the right edge and parent is None ? {self.focus_parent == None }")
+            self.pos = 0
+
+            
+            
+            if self.focus_parent != None:
+                self.focus_parent.move(direction)
+                walked_off_the_edge = True
+
+        if direction == Direction.BACKWARD and previous_pos < self.pos:
+            logger.info("FocusManager: LEFT EDGE; We have moved passed the left edge")
+            self.pos = len(self.clients) -1
+            if self.focus_parent != None:
+                self.focus_parent.move(direction)
+                walked_off_the_edge = True
+
+
+        #Layout has only 1 item so pos always is the same
+        if previous_pos == self.pos:
+            if self.focus_parent != None:
+                self.focus_parent.move(direction)
+                walked_off_the_edge = True
+     
+
+
+    
+
+        if len( self.clients ) >=1:
+            self.spotlight = self.clients[self.pos]
+
+        if not walked_off_the_edge and self.spotlight != None:
+            self.spotlight.handleGetFocus(direction)
+
+
+    def forward(self):
+        self.move(Direction.FORWARD)
+
+
+
+    def backward(self):
+        self.move(Direction.BACKWARD)
+
+
+
+class FocusableClient(ABC):
+
+
+    def __init__(self, **kwargs:Unpack[FocusableClientType]): 
+
+
+        logger.info(f"FocusableCLient initialized and class is {self.__class__}")
+
+        self.on_receive_focus:Callable | None = None
+        self.on_lose_focus:Callable | None = None
+        self.id:object = kwargs.get("id")
+
+
+        self.focus: FocusManager | None   = None
+        self.focus_parent: FocusManager | None = None
+
+
+        # super().__init__(**kwargs)
+
+    def createFocus(self):
+        if self.focus != None:
+            raise Exception("Error: Trying to createFocus when it already existed")
+
+        self.focus = FocusManager()
+        return self.focus
+
+
+    def handleGetFocus(self,direction:Direction):
+        self.defaultHandleGetFocus(direction)
+        if self.on_receive_focus != None:
+            self.on_receive_focus()
+
+
+
+    def handleLoseFocus(self,direction:Direction):
+        self.defaultHandleLoseFocus(direction)
+        logger.info("calling onlose xd")
+        if self.on_lose_focus != None:
+            self.on_lose_focus()
+
+
+    @abstractmethod
+    def defaultHandleGetFocus(self,direction:Direction):
+        return None
+
+    @abstractmethod
+    def defaultHandleLoseFocus(self,direction:Direction):
+        return None
+
+    @abstractmethod
+    def handleKey(self,c):
+        raise NotImplementedError()
+
+
 
 class ScreenHandler():
     def __init__(self,terminal_window) -> None:
@@ -115,43 +308,35 @@ class ScreenHandler():
         self.screens:dict[str,Screen] = {}
 
 
-    def add_screen(self,screen:"Screen"):
-        if self.screens.get(screen.screen_name_identifier) != None:
-            logger.info(f"{screen.screen_name_identifier} cannot be added twice")
-            return
+        self.focus = FocusManager()
 
-        logger.info(f"Adding screen {screen.screen_name_identifier}")
-        self.screens[screen.screen_name_identifier] = screen
-        # self.set_spotlight(screen.screen_name_identifier)
+
+    def add_screen(self,screen:"Screen"):
+
+        self.focus.add_client(screen)
+        logger.info(f"Adding screen {screen.id}")
 
     def removeLight(self):
         self.spotlight = None
 
-    def draw(self):
-        if self.spotlight == None:
-            raise Exception(f"Screen spotlight is None")
-        self.spotlight.get_window().clear()
-        self.spotlight.get_window().refresh()
-        self.spotlight.show()
+    # def draw(self):
+    #     if self.spotlight == None:
+    #         raise Exception(f"Screen spotlight is None")
+    #     self.spotlight.get_window().clear()
+    #     self.spotlight.get_window().refresh()
+    #     self.spotlight.show()
+
+    def set_spotlight(self,screen:"Screen"):
+        self.focus.set_spotlight(screen)
 
 
-    def set_spotlight(self,screen_name_identifier):
-
-        #clear previous window
-        if self.spotlight != None:
-            self.spotlight.get_window().clear()
-            self.spotlight.get_window().refresh()
-            #
-
-        screen:Screen | None = self.screens.get(screen_name_identifier)
-        if screen == None:
-            raise Exception(f"'{screen_name_identifier}' screen was not found\nMake sure the screen exists before setting it as spotlight")
-        self.spotlight = screen
-        self.spotlight.show()
+    def set_spotlight_byid(self,id):
+        self.focus.set_spotlight_byid(id)
 
     def handleKey(self,c):
-        if self.spotlight != None:
-            self.spotlight.handleKey(c)
+
+        if self.focus.spotlight != None:
+            self.focus.spotlight.handleKey(c)
             return
 
         logger.info(f"Screen Spotligh is None ins handleKey")
@@ -212,21 +397,24 @@ class ScreenAPI(Protocol):
 # class LayoutApi(Protocol):
 #     def traverse(self,direction:Literal["forward","backward"]) -> None: ...
 
-class Screen():
+class Screen(FocusableClient):
 
     terminal_window:curses.window
 
-    def __init__(self,screen_name_identifier,background=None) -> None:
+    def __init__(self,**kwargs:Unpack[ScreenType]) -> None:
         term_lines,term_cols = Screen.terminal_window.getmaxyx() 
+
         self.screen_window = curses.newwin(term_lines,term_cols,0,0)
-        self.layouts:list["Layout"] = []
-        self.spotlight:None | Layout = None
-        self.traversal_index = -1 # Starts like that cause when adding layout it increments
-        self.screen_name_identifier = screen_name_identifier
-        self.background = background
+
+        # self.screen_name_identifier = screen_name_identifier
+        self.background = kwargs.pop("background",None)
+        
 
 
-        self.id_counter = 0
+
+        super().__init__(**kwargs)
+        self.focus = FocusManager()
+        
 
     def get_screen_size(self):
         return self.screen_window.getmaxyx()
@@ -236,15 +424,38 @@ class Screen():
         return self.screen_window
 
 
+    def defaultHandleGetFocus(self, direction: Direction):
+        self.show()
+
+
+
+    def defaultHandleLoseFocus(self, direction: Direction):
+        self.screen_window.clear()
+        self.screen_window.refresh()
+
+
 
     def add_layout(self,layout:"Layout"):
         layout.screen_api = self
-        layout.id = self.id_counter
-        self.traversal_index += 1
-        self.id_counter += 1
-        self.layouts.append(layout)
+        # layout.id = self.id_counter
 
-        self.spotlight = layout
+        
+        if isinstance(layout,FocusableClient):
+            logger.info("Adding Focusable Layout")
+            self.focus.add_client(layout)
+
+
+            #Every client must know their parent
+            layout.focus_parent = self.focus
+
+            if layout.focus != None:
+                layout.focus.focus_parent = self.focus
+
+
+            
+
+
+        # self.spotlight = layout
 
 
     def show(self):
@@ -254,21 +465,28 @@ class Screen():
         """
 
 
-        for lay in self.layouts:
+        logger.info(f"{'-'*5}SCREEN TELLS LAYOUTS TO RENDER{'-'*5}")
+
+
+
+        for client in self.focus.clients:
+            lay = cast("Layout", client)
             lay.show()
+
 
         if self.background != None:
             self.screen_window.bkgd(" ",curses.color_pair(self.background))
 
+        
 
         
-        if self.spotlight != None: 
-            self.spotlight.handle_receive_focus('forward')
+        self.focus.set_spotlight_first()
+        # if self.focus.spotlight != None: 
+        #     self.focus.spotlight.handleGetFocus(Direction.FORWARD)
 
 
         self.screen_window.refresh()
 
-        logger.info(f"{'-'*5}RENDER LAYOUTS {'-'*5}")
 
 
 
@@ -278,90 +496,37 @@ class Screen():
     def set_spotlight(self,layout:"Layout"):
 
 
+        logger.info(f"set_spotlight is focusableitem {isinstance(layout,FocusableClient)}")
 
-        self.spotlight = layout
-        self.traversal_index = -1
-        for index,layout in enumerate( self.layouts ):
-            if self.spotlight == layout:
-                self.traversal_index = index
-                logger.info(f"Screen traversal index {self.traversal_index}")
-                break
+        if isinstance(layout,FocusableClient):
+            status = self.focus.set_spotlight(layout)
+            if status == Status.ERR:
+                raise Exception("Error: Trying to set spotlight to layout that is not registered in clients.\nMake sure you set the spotlight after the layout has been added to the screen")
 
-        if self.traversal_index == -1:
-            raise Exception(f"Screen [{self.screen_name_identifier}]  func [set_spotlight] traversal_index was not found")
-
-
-    def traverse(self,direction:Literal["forward","backward"]) :
-        """ 
-
-        Gives focus to the next layout
-        if only 1 layout == giving focus to that same layout; calls -> layout_receive_focus(direction)
-        """
-
-
-        
-        if len(self.layouts) == 1:
-            self.layouts[0].handle_receive_focus(direction)
-            return  
-
-        logger.info("Screen, traversing to a new layout")
-
-        
-
-
-        magnitude = 1 if direction == "forward" else -1
-
-
-        count = 0
-        while (True):
-
-            previous_layout:Layout = self.layouts[self.traversal_index]
-            previous_layout.handle_lose_focus(direction)
-
-            self.traversal_index += magnitude
-
-            if self.traversal_index < 0:
-                self.traversal_index = len(self.layouts) - 1
-
-            if self.traversal_index >= len(self.layouts):
-                self.traversal_index = 0 
-
-            next_layout = self.layouts[self.traversal_index]
-            logger.info(f"Next layout focusable? {self.layoutIsFocusable(next_layout)}")
-
-            
-            if self.layoutIsFocusable(next_layout):
-                next_layout.handle_receive_focus(direction)
-                self.spotlight = next_layout
-                break
-
-            count += 1
-            if count >= len(self.layouts) + 5:
-                raise Exception("class Screen func [traverse] There is error in travesal infinite while loop")
-
-        return  
-
-        # if (self.traversal)
-
-    
-    def layoutIsFocusable(self,layout:"Layout") -> bool:
-
-        if isinstance(layout,FocusableLayout) or isinstance(layout,GlobalKeyLayout):
-            return True
-
-        return False
-
-        
-
-
-
-    def handleKey(self,c):
-        if self.spotlight != None:
-            # logger.info(f"Layout id {self.spotlight.id}")
-            self.spotlight.handleKey(c)
             return
 
-        raise Exception(f"class [Screen] func [handleKey] does not have a layout in spotlight")
+
+        raise Exception("Error: Cannot set spotlight to a a layout that is not a focusableClient")
+            
+
+
+
+
+
+    def traverse(self,direction:Direction) :
+        """ 
+        """
+        self.focus.move(direction)
+
+    
+
+    def handleKey(self,c):
+
+        if self.focus.spotlight != None:
+            self.focus.spotlight.handleKey(c)
+            return
+
+        raise Exception(f"class Screen; Func [handleKey] does not have a layout in spotlight\nWeird a layout should have at least a layout")
 
 
 class LayoutType(TypedDict,total=False):
@@ -387,7 +552,6 @@ class Layout(ABC):
         self,**kwargs:Unpack[LayoutType]
     ) -> None:
 
-        self.id:int
         self.items:list["Item"] = [] 
 
         #focusable
@@ -430,7 +594,7 @@ class Layout(ABC):
         self.default_border_padding = 2
 
 
-        self.screen_api:ScreenAPI
+        self.screen_api:Screen
 
 
 
@@ -438,10 +602,11 @@ class Layout(ABC):
         self.layout_kind = None
         self.spotlight:Item | None = None
 
+        super().__init__(**kwargs)
 
 
 
-    def _create_menu_window(self):
+    def _create_layout_window(self) -> curses.window:
 
         layout_height = 0
         layout_width = 0
@@ -525,7 +690,7 @@ class Layout(ABC):
 
 
 
-        self.layout_window = self.screen_api.get_window().derwin(
+        layout_window = self.screen_api.get_window().derwin(
             self.total_height,
             self.total_width,
             topy,
@@ -534,10 +699,12 @@ class Layout(ABC):
 
 
         if self.hasBorder:
-            self.layout_window.box()
+            layout_window.box()
 
 
-        logger.info(f"layout_window size {self.layout_window.getmaxyx()}")
+        logger.info(f"layout_window size {layout_window.getmaxyx()}")
+
+        return layout_window
 
     def show(self):
         self._render()
@@ -555,10 +722,11 @@ class Layout(ABC):
 
         if len(self.items) <=0:
             logger.info(f"Layout has no items in screen")
+            self.layout_window = self._create_layout_window()
             return
 
 
-        self._create_menu_window()
+        self.layout_window = self._create_layout_window()
 
         if self.layout_window == None:
             raise Exception("Layout window is null")
@@ -654,23 +822,32 @@ class Layout(ABC):
 
 
     
-    def add_item(self,item:"Item"):
+    """
+    Returns last item
+    """
+    def add_items(self,*items:"Item") -> "Item":
         """
         Adds items to the layout
         self.win of the item is not yet created
         """
 
-        allow,error = self.validate_item(item)
-
-        if not allow:
-            if isinstance(error,Exception):
-                raise error
-            
-            raise Exception("In not allow it should raise error,fix it")
+        if len(items) <= 0:
+            raise Exception("Error in add_items: There were no items prompted")
 
 
-        item.layout_api = self
-        self.items.append(item)
+        for item in items:
+            allow,error = self.validate_item(item)
+
+            if not allow:
+                if isinstance(error,Exception):
+                    raise error
+                
+
+            item.layout_api = self
+            self.items.append(item)
+
+        return items[-1]
+
 
 
     @abstractmethod
@@ -682,7 +859,7 @@ class Layout(ABC):
         raise NotImplementedError()
 
 
-    def handle_receive_focus(self,from_where:Literal["forward","backward"]):
+    def handle_receive_focus(self,from_where:Direction):
         """ Can be overriden to hook more functionality """
         if self.hasBorder:
             self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_FOCUSED))
@@ -690,7 +867,7 @@ class Layout(ABC):
         logger.info("Layout receive focus")
 
 
-    def handle_lose_focus(self,from_where:Literal["forward","backward"]):
+    def handle_lose_focus(self,from_where:Direction):
         """ Can be overriden to hook more functionality """
         if self.hasBorder:
             self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_NORMAL))
@@ -699,57 +876,46 @@ class Layout(ABC):
 
 
 
-
-    @abstractmethod
-    def traverse(self,direction:Literal["forward","backward"]):
-        pass
-
-
     def hide(self):
         self.layout_window.clear()
         self.layout_window.refresh()
 
 
-    @abstractmethod
-    def handleKey(self,c):
-        raise NotImplementedError()
 
-
-    def handleTraverseKey(self,c) -> bool:
-        """True means is traversal and the caller should abort handling the key"""
-        if c == ord("\t"):
-            self.traverse("forward")
-            return True
-
-        if c == curses.KEY_BTAB:
-            self.traverse("backward")
-            return True
-
-        return False
-
-
-
-
-
-
-class FocusableLayout(Layout):
+class FocusableLayout(Layout,FocusableClient):
     """
     Can contain FocusableItem and DecorationItem
     Spotlight can only be FocusableItem
     """ 
 
-    def __init__(
-            self,**kwargs:Unpack[LayoutType]
-    ) -> None:
-
+    def __init__(self, **kwargs:Unpack[LayoutType]) -> None:
         super().__init__(**kwargs)
 
-    def add_item(self,item:"Item"):
-        super().add_item(item)
-        self.set_spotlight(item)
+
+        # self.focus = FocusManager
+        self.createFocus()
+
+    def add_items(self,*items:"Item"):
+        last_item = super().add_items(*items)
+
+        for item in items:
+            if isinstance(item,FocusableClient):
+                self.focus.add_client(item)
+
+        
+
+        if len(self.focus) <=0:
+            raise Exception("Error:It doesnt make sense that focusablelayout has 0 focusableitems")
+
+
+        
+        # self.focus.set_spotlight_last()
+        return last_item
+
+        
 
     def validate_item(self, item: "Item"):
-        if isinstance(item,FocusableItem) or isinstance(item,DecorationItem):
+        if isinstance(item,FocusableClient) or isinstance(item,DecorationItem):
             return True,None
 
         return False, Exception(f"Item {item.__class__.__name__} is not compatible with Layout {self.__class__.__name__}")
@@ -757,16 +923,14 @@ class FocusableLayout(Layout):
 
     def set_spotlight(self,item:"Item"):
 
-        self.spotlight = item
+        if not isinstance(item,FocusableClient):
+            raise Exception("Error: Trying to set spotlight to item that is not a FocusableClient")
 
-        found = False
-        for index,item in enumerate( self.items ):
-            if self.spotlight == item:
-                self.traversal_index = index
-                found = True
 
-        if not found:
-            raise Exception(f"class [FocusableLayout]  func [set_spotlight] item was not found in items")
+
+        self.focus.set_spotlight(item)
+
+
 
 
     def handleKey(self,c):
@@ -775,94 +939,41 @@ class FocusableLayout(Layout):
             self.registered_global_keys[c]()
             return
 
-        if self.handleTraverseKey(c):
+
+        if c == ord("\t") or c == curses.KEY_BTAB:
+            direction = Direction.FORWARD if c == ord("\t") else Direction.BACKWARD 
+            self.focus.move(direction)
             return
 
-        if isinstance(self.spotlight,FocusableItem):
-            self.spotlight.handleKey(c)
-
-
-
-    def handle_receive_focus(self,from_where:Literal["forward","backward"]):
-
-        logger.info("before calling supa")
-
-        logger.info("after calling supa")
-
-
-        if from_where == 'forward':
-            self.traversal_index = 0
-            self.spotlight = self.items[0]
-
-        elif from_where == 'backward':
-            self.traversal_index = len(self.items) -1
-            self.spotlight = self.items[ self.traversal_index ]
-
-
-        current_item = self.items[self.traversal_index]
-        if isinstance(current_item,FocusableItem):
-            logger.info(f"layout_receive_focus Widget receiving focus {current_item.__class__.__name__}")
-            current_item.handleGetFocus()
-
-        super().handle_receive_focus(from_where)
-
-    def traverse(self,direction:Literal["forward","backward"]):
-        """ 
-        'forward' -> Traverse to next item
-        'backward' -> Traverse to preceding item
-
-        Going out either edge calls screen.traverse(direction)
-
-        """
         
-        logger.info(f"Traversing in Layout, and kind is {self.layout_kind}")
+        if self.focus.spotlight == None:
+            return
+        self.focus.spotlight.handleKey(c)
 
 
-        magnitude = 1 if direction == "forward" else -1
-        count = 0
+    
+    def defaultHandleGetFocus(self, direction: Direction):
+
+        super().handle_receive_focus(direction)
+
+        if direction == Direction.FORWARD:
+            self.focus.set_spotlight_first()
+    
+
+        if direction == Direction.BACKWARD:
+            self.focus.set_spotlight_last()
 
 
+        if direction == Direction.JUMP:
+            self.focus.set_spotlight_first()
 
 
-        while (True):
-            previous_item = self.items[self.traversal_index]
-
-            if isinstance(previous_item,FocusableItem):
-                previous_item.handleLoseFocus()
-
-            self.traversal_index += magnitude
-
-            if self.traversal_index < 0:
-                is_there_next_layout = self.screen_api.traverse("backward")
-                return
+    def defaultHandleLoseFocus(self, direction: Direction):
+        super().handle_lose_focus(direction)
+        self.focus.tell_current_client_lose_focus()
 
 
-
-
-            #Go to next layout
-            if self.traversal_index >= len(self.items):
-                self.traversal_index = -1 
-                is_there_next_layout = self.screen_api.traverse("forward")
-                return
-
-
-
-            next_item = self.items[self.traversal_index]
-
-            if isinstance(next_item,FocusableItem):
-                logger.info(f"traverse Widget receiving focus {next_item.__class__.__name__}")
-                next_item.handleGetFocus()
-                self.spotlight = next_item
-                break
-
-            count += 1
-            if count >= len(self.items) + 5:
-                raise Exception("class Layout func [traverse] There is error in travesal infinite while loop")
-
-
-
-
-class GlobalKeyLayout(Layout):
+class GlobalKeyLayout(Layout,FocusableClient):
     """
     Can contain GlobalKeyItem and DecorationItem
     """ 
@@ -874,8 +985,12 @@ class GlobalKeyLayout(Layout):
             return
 
 
-        if self.handleTraverseKey(c):
+
+        if c == ord("\t") or c == curses.KEY_BTAB:
+            direction = Direction.FORWARD if c == ord("\t") else Direction.BACKWARD 
+            self.focus_parent.move(direction)
             return
+
 
         for item in self.items:
             if isinstance(item,GlobalKeyItem):
@@ -889,18 +1004,6 @@ class GlobalKeyLayout(Layout):
             return True,None
 
         return False, Exception(f"Item {item.__class__.__name__} is not compatible with Layout {self.__class__.__name__}")
-
-    def traverse(self,direction:Literal["forward","backward"]):
-        """ 
-        'forward' -> Traverse to next item
-        'backward' -> Traverse to preceding item
-
-        Going out either edge calls screen.traverse(direction)
-
-        """
-        logger.info(f"Traversing in Layout, and kind is {self.layout_kind}")
-        self.screen_api.traverse(direction)
-
 
 
 
@@ -946,7 +1049,9 @@ class Item(ABC):
         self.padding = padding
 
         self.win:curses.window
-        pass
+
+        super().__init__(**kwargs)
+
 
     def set_win(self,win:curses.window):
         self.win = win
@@ -969,49 +1074,6 @@ class DecorationItem(Item,ABC):
         super().__init__(**kwargs)
 
     
-
-'''
-handleReceiving
-'''
-class FocusableItem(Item,ABC):
-
-    # def __init__(self, lines: int, cols: int, push=Push(), padding=Padding(), hasBorder=False, background=None) -> None:
-    def __init__(self,**kwargs) -> None:
-
-        self.on_receive_focus:Callable | None = None
-        self.on_lose_focus:Callable | None = None
-
-
-
-        super().__init__(**kwargs)
-        # Item.__init__(self,lines, cols, push, padding, hasBorder, background)
-
-    def handleGetFocus(self):
-        self.handleGetFocusDefault()
-        if self.on_receive_focus != None:
-            self.on_receive_focus()
-
-
-        # return None
-
-    def handleLoseFocus(self):
-        self.handleLoseFocusDefault()
-        if self.on_lose_focus != None:
-            self.on_lose_focus()
-
-
-    @abstractmethod
-    def handleGetFocusDefault(self):
-        return None
-
-    @abstractmethod
-    def handleLoseFocusDefault(self):
-        return None
-
-    @abstractmethod
-    def handleKey(self,c):
-        raise NotImplementedError()
-
 
 class GlobalKeyItem(Item,ABC):
     """
@@ -1068,7 +1130,7 @@ class Label(DecorationItem):
 
 
 
-class ButtonBase(Item,ABC):
+class ButtonBase(Item):
     def __init__(self,text,**kwargs) -> None:
         self.length = len(text)
         self.text = text
@@ -1172,10 +1234,11 @@ class ButtonGlobalKey(ButtonBase,GlobalKeyItem):
         
 
 
-class ButtonFocusable(ButtonBase,FocusableItem):
+class ButtonFocusable(ButtonBase,FocusableClient):
 
     def __init__(self,**kwargs:Unpack[ButtonBaseType]) -> None:
 
+        logger.info("ButtonFocusable init")
         text =  kwargs.get('text') 
 
         kwargs.setdefault("lines",1 )
@@ -1200,7 +1263,7 @@ class ButtonFocusable(ButtonBase,FocusableItem):
         # return super().addAction(c)
 
 
-    def handleGetFocusDefault(self):
+    def defaultHandleGetFocus(self,direction:Direction):
 
         if self.has_border:
             self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_FOCUSED))
@@ -1209,7 +1272,7 @@ class ButtonFocusable(ButtonBase,FocusableItem):
         logger.info("button receiving focus")
         # print("shit")
 
-    def handleLoseFocusDefault(self):
+    def defaultHandleLoseFocus(self,direction:Direction):
         if self.has_border:
             self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_NORMAL))
             self.win.refresh()
@@ -1228,9 +1291,8 @@ class ButtonFocusable(ButtonBase,FocusableItem):
 
 
 
-class Input(FocusableItem):
-    # def __init__(self,push=Push(),min_width=10, padding=Padding(),hasBorder=False,background=None) -> None:
-    def __init__(self,**kwargs:Unpack[defaultItemAttributes]) -> None:
+class Input(Item,FocusableClient):
+    def __init__(self,**kwargs:Unpack[ItemAttributesType]) -> None:
 
         min_width = kwargs.setdefault('min_width',10)
 
@@ -1250,10 +1312,28 @@ class Input(FocusableItem):
 
 
     
-    def handleGetFocusDefault(self):
+
+    def defaultHandleGetFocus(self,direction:Direction):
+
         self.win.move(self.cursory,self.cursorx)
         self.win.refresh()
-        return None
+
+        if self.has_border:
+            self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_FOCUSED))
+            self.win.refresh()
+            logger.info("Input changes color")
+        logger.info("button receiving focus")
+
+    def defaultHandleLoseFocus(self,direction:Direction):
+
+
+        if self.has_border:
+            self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_NORMAL))
+            self.win.refresh()
+        logger.info("Input loosing focus")
+
+
+
 
     def renderItem(self,window:curses.window):
         self.win = window
