@@ -19,15 +19,6 @@ Spotlight is the current screen that receives the input
 
 
 
-class Direction(IntEnum):
-    FORWARD = auto()
-    BACKWARD = auto()
-    JUMP = auto()
-
-
-class Status(IntEnum):
-    OK = auto()
-    ERR = auto()
 
 
 
@@ -56,7 +47,6 @@ class DefaultColors:
 
 
 
-class ReusableActions():
 
 
 class GlobalFocusManager:
@@ -319,12 +309,6 @@ class ScreenHandler():
     def removeLight(self):
         self.spotlight = None
 
-    # def draw(self):
-    #     if self.spotlight == None:
-    #         raise Exception(f"Screen spotlight is None")
-    #     self.spotlight.get_window().clear()
-    #     self.spotlight.get_window().refresh()
-    #     self.spotlight.show()
 
     def set_spotlight(self,screen:"Screen"):
         self.focus.set_spotlight(screen)
@@ -345,32 +329,6 @@ class ScreenHandler():
 
 
 
-class Padding():
-    def __init__(self, top = 0, right = 0, bottom = 0, left = 0):
-        self.top = top
-        self.right = right
-        self.bottom = bottom
-        self.left = left
-
-    def get_padding_horizontal_points(self):
-        return self.right + self.left
-
-    def get_padding_vertical_points(self):
-
-        return self.top + self.bottom
-
-class Push():
-    def __init__(self, top = 0, right = 0, bottom = 0, left = 0):
-        self.top = top
-        self.right = right
-        self.bottom = bottom
-        self.left = left
-
-    def get_push_horizontal_points(self):
-        return self.right + self.left
-
-    def get_push_vertical_points(self):
-        return self.bottom + self.top
 
 '''
 Glossary
@@ -529,14 +487,6 @@ class Screen(FocusableClient):
         raise Exception(f"class Screen; Func [handleKey] does not have a layout in spotlight\nWeird a layout should have at least a layout")
 
 
-class LayoutType(TypedDict,total=False):
-    coordinates:Coordinates | None
-    where:Where | None
-    hasBorder:bool
-    background:int
-    axis:Literal["horizontal","vertical"]
-    padding:Padding
-    push:Push
 
 
 
@@ -1007,6 +957,15 @@ class GlobalKeyLayout(Layout,FocusableClient):
 
 
 
+    def defaultHandleGetFocus(self, direction: Direction):
+
+        super().handle_receive_focus(direction)
+
+    def defaultHandleLoseFocus(self, direction: Direction):
+        super().handle_lose_focus(direction)
+
+
+
 class DecorationLayout(Layout):
     """
     Layout that is not focusable , which means it cannot handle keys
@@ -1171,27 +1130,6 @@ class ButtonBase(Item):
     def addAction(self,c:Callable):
         self.actions.append(c)
 
-class defaultItemAttributes(TypedDict,total=False):
-     push:Push
-     padding:Padding
-     hasBorder:bool
-     background:int | None
-     lines:int
-     cols:int
-     min_width:int
-     max_width:int
-
-
-
-
-class ButtonBaseType(defaultItemAttributes):
-     text:Required[str]
-
-
-class ButtonGlobalKeyType(ButtonBaseType,total=False):
-     text:Required[str]
-     global_key_char:Required[str]
-     global_key:int
 
 
 
