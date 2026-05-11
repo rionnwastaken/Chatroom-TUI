@@ -1,0 +1,31 @@
+[project]
+name="Chatroom-TUI-Sockets"
+version = "0.0.0"
+
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+
+
+[tool.pyright]
+venv = ".venv"
+venvPath = "."
+
+
+[tool.hatch.build]
+dev-mode-dirs = ["src"]
+
+
+[tool.hatch.envs.default]
+path = ".venv"
+
+
+[tool.hatch.envs.default.scripts]
+exp = "hatch run python3 experiments/test.py"
+
+
+
