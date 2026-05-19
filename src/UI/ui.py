@@ -72,7 +72,6 @@ class FocusManager:
         self.should_empty_layout_be_focusable = False
 
 
-        logger.info(f"Spotlight exists {self.spotlight}")
 
 
     def __len__(self):
@@ -121,6 +120,9 @@ class FocusManager:
         Set the spotlight by reference
         """ 
 
+        
+        self.logger.info(f"Tell Current client lose focus {self.spotlight.__class__}")
+
         self.tell_current_client_lose_focus()
 
         if client not in self.clients:
@@ -130,6 +132,7 @@ class FocusManager:
         self.pos = index
         self.spotlight = client
 
+        self.logger.info(f"Tell Current client gain focus {self.spotlight.__class__}")
         self.tell_current_client_gain_focus()
         
         return Status.OK
@@ -141,7 +144,10 @@ class FocusManager:
         if client == None:
             raise Exception(f"Error: Client could not be found with the id of {id}")
 
-        self.set_spotlight(client)
+        status = self.set_spotlight(client)
+
+        if status == Status.ERR:
+            raise Exception(f"There was error when setting spotlight by id.The client with id {id} is not registered")
 
 
     def set_spotlight_first(self):
@@ -185,7 +191,6 @@ class FocusManager:
         """
         
         walked_off_the_edge = False
-        logger.info(f"is insance {isinstance(self,FocusableClient)}")
         
 
         
@@ -248,7 +253,7 @@ class FocusableClient(ABC):
         self.id:object = kwargs.get("id")
 
 
-        self.focus: FocusManager | None   = None
+        # self.focus: FocusManager | None   = None
         self.focus_parent: FocusManager | None = None
 
 
@@ -271,7 +276,7 @@ class FocusableClient(ABC):
 
     def handleLoseFocus(self,direction:Direction):
         self.defaultHandleLoseFocus(direction)
-        logger.info("calling onlose xd")
+        # logger.info("calling onlose xd")
         if self.on_lose_focus != None:
             self.on_lose_focus()
 
@@ -315,6 +320,7 @@ class ScreenHandler():
 
 
     def set_spotlight_byid(self,id):
+        self.logger.debug(f"Set spotlight by id")
         self.focus.set_spotlight_byid(id)
 
     def handleKey(self,c):
@@ -346,16 +352,8 @@ The focused has a  bidirection traversal
 There is no global_keys for the screen, at least one layout forcefully needs spotlight but layouts dont need to be focusable necesarilly
 '''
 
-class ScreenAPI(Protocol):
-    def get_screen_size(self) -> tuple[int, int]: ...
-    def traverse(self,direction:Literal["forward","backward"]) -> None: ...
-    def get_window(self) -> curses.window: ...
 
-
-# class LayoutApi(Protocol):
-#     def traverse(self,direction:Literal["forward","backward"]) -> None: ...
-
-class Screen(FocusableClient):
+class Screen(Base,FocusableClient):
 
     terminal_window:curses.window
 
@@ -363,9 +361,8 @@ class Screen(FocusableClient):
         term_lines,term_cols = Screen.terminal_window.getmaxyx() 
 
         self.screen_window = curses.newwin(term_lines,term_cols,0,0)
-
-        # self.screen_name_identifier = screen_name_identifier
         self.background = kwargs.pop("background",None)
+        self.visible = False
         
 
 
@@ -383,19 +380,21 @@ class Screen(FocusableClient):
 
 
     def defaultHandleGetFocus(self, direction: Direction):
+        self.visible = True
         self.show()
 
 
 
     def defaultHandleLoseFocus(self, direction: Direction):
+        self.visible = False
         self.screen_window.clear()
         self.screen_window.refresh()
 
 
 
     def add_layout(self,layout:"Layout"):
-        layout.screen_api = self
-        # layout.id = self.id_counter
+        layout.screen = self
+        
 
         
         if isinstance(layout,FocusableClient):
@@ -410,26 +409,21 @@ class Screen(FocusableClient):
                 layout.focus.focus_parent = self.focus
 
 
-            
-
-
-        # self.spotlight = layout
-
-
     def show(self):
         """
         Renders each layout
         Makes the layout spotlight handle_receiving_focus
         """
 
+        
 
-        logger.info(f"{'-'*5}SCREEN TELLS LAYOUTS TO RENDER{'-'*5}")
+        logger.info(f"Screen is about to show")
 
 
 
         for client in self.focus.clients:
-            lay = cast("Layout", client)
-            lay.show()
+            layout = cast("Layout", client)
+            layout.show()
 
 
         if self.background != None:
@@ -438,10 +432,10 @@ class Screen(FocusableClient):
         
 
         
-        self.focus.set_spotlight_first()
-        # if self.focus.spotlight != None: 
-        #     self.focus.spotlight.handleGetFocus(Direction.FORWARD)
-
+        if self.focus.spotlight == None:
+            self.focus.set_spotlight_first()
+        else:
+            self.focus.tell_current_client_gain_focus()
 
         self.screen_window.refresh()
 
@@ -502,7 +496,10 @@ class Layout(ABC):
         self,**kwargs:Unpack[LayoutType]
     ) -> None:
 
+        self.postponed_functions = []
+
         self.items:list["Item"] = [] 
+        self.is_rendered = False
 
         #focusable
         # self.traversal_index = -1
@@ -510,7 +507,7 @@ class Layout(ABC):
         self.axis = kwargs.get('axis') or 'horizontal'
         self.layout_window:curses.window
 
-        self.hasBorder = kwargs.get('hasBorder') or True
+        self.hasBorder = kwargs.get('hasBorder') or False
         self.background = kwargs.get('background') or DefaultColors.LAYOUT_NORMAL
 
         self.padding = kwargs.get('padding') or Padding()
@@ -544,7 +541,7 @@ class Layout(ABC):
         self.default_border_padding = 2
 
 
-        self.screen_api:Screen
+        self.screen:Screen
 
 
 
@@ -634,13 +631,13 @@ class Layout(ABC):
 
         if self.where != None:
             if self.where == Where.CENTER_OF_SCREEN:
-                max_y,max_x = self.screen_api.get_screen_size()
+                max_y,max_x = self.screen.get_screen_size()
                 topx = int( (max_x / 2) - (self.total_width / 2) )
                 topy = 10
 
 
 
-        layout_window = self.screen_api.get_window().derwin(
+        layout_window = self.screen.get_window().derwin(
             self.total_height,
             self.total_width,
             topy,
@@ -648,19 +645,54 @@ class Layout(ABC):
         )
 
 
-        if self.hasBorder:
-            layout_window.box()
 
 
         logger.info(f"layout_window size {layout_window.getmaxyx()}")
 
         return layout_window
 
-    def show(self):
-        self._render()
+    def paint_layout(self):
+
+        if self.hasBorder:
+            self.layout_window.box()
 
 
-    def _render(self):
+        if self.background != None:
+            logger.info(f"Layout setting background {DefaultColors.LAYOUT_NORMAL}")
+            self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_NORMAL))
+
+        self.layout_window.noutrefresh()
+
+
+    def show(
+        self,
+    ):
+        if not self.is_rendered:
+            self.is_rendered = True
+            self.render()
+
+
+        self.paint_layout()
+        for item in self.items:
+            item.paint_item()
+
+        curses.doupdate()
+
+        
+        if len(self.postponed_functions) > 0:
+            self.logger.info("Start to run postponed functions")
+
+            for action in self.postponed_functions:
+                action()
+                pass
+
+            self.postponed_functions.clear()
+            self.logger.info("End of run postponed functions")
+
+        
+
+
+    def render(self):
 
         logger.info(f"{'-'*10}RENDERING LAYOUT{'-'*10}")
 
@@ -677,6 +709,7 @@ class Layout(ABC):
 
 
         self.layout_window = self._create_layout_window()
+        self.paint_layout()
 
         if self.layout_window == None:
             raise Exception("Layout window is null")
@@ -718,7 +751,8 @@ class Layout(ABC):
                 self.item_current_posx
             )
 
-            item.renderItem(item_win)
+            item.set_win(item_win)
+            item.paint_item()
 
         
             if self.axis == 'horizontal':
@@ -739,11 +773,11 @@ class Layout(ABC):
                     ])
 
 
-        if self.background != None:
-            logger.info(f"Layout setting background {DefaultColors.LAYOUT_NORMAL}")
-            self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_NORMAL))
+        # if self.background != None:
+        #     logger.info(f"Layout setting background {DefaultColors.LAYOUT_NORMAL}")
+        #     self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_NORMAL))
 
-        self.layout_window.refresh()
+        # self.layout_window.refresh()
 
 
         # if isinstance(self.spotlight,FocusableItem):
@@ -796,6 +830,9 @@ class Layout(ABC):
             item.layout_api = self
             self.items.append(item)
 
+
+        # self._render()
+
         return items[-1]
 
 
@@ -842,8 +879,8 @@ class FocusableLayout(Layout,FocusableClient):
         super().__init__(**kwargs)
 
 
-        # self.focus = FocusManager
-        self.createFocus()
+        self.focus = FocusManager()
+        # self.createFocus()
 
     def add_items(self,*items:"Item"):
         last_item = super().add_items(*items)
@@ -877,8 +914,12 @@ class FocusableLayout(Layout,FocusableClient):
             raise Exception("Error: Trying to set spotlight to item that is not a FocusableClient")
 
 
+        if self.screen.visible:
+            self.focus.set_spotlight(item)
 
-        self.focus.set_spotlight(item)
+        else:
+            # self.focus.spotlight = 
+            self.postponed_functions.append(lambda:self.focus.set_spotlight(item))
 
 
 
@@ -906,6 +947,11 @@ class FocusableLayout(Layout,FocusableClient):
 
         super().handle_receive_focus(direction)
 
+        if self.focus.spotlight != None:
+            self.focus.tell_current_client_gain_focus()
+            return
+
+
         if direction == Direction.FORWARD:
             self.focus.set_spotlight_first()
     
@@ -927,6 +973,11 @@ class GlobalKeyLayout(Layout,FocusableClient):
     """
     Can contain GlobalKeyItem and DecorationItem
     """ 
+
+
+    def __init__(self, **kwargs:Unpack[LayoutType]) -> None:
+        super().__init__(**kwargs)
+        self.focus = FocusManager()
 
     def handleKey(self,c):
 
@@ -1021,10 +1072,45 @@ class Item(ABC):
 
         return (lines,cols)
 
+    
+    
+    def paint_background(self):
+        if self.background != None:
+            self.win.bkgd(" ", curses.color_pair(self.background))
+
+        else:
+            self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_NORMAL))
+
+    def paint_insert_text_inside_border(self,text):
+
+        if not self.has_border:
+            logger.info(f"self.win size {self.win.getmaxyx()} and length text = {len(text)}")
+            self.win.insstr(0,0,text)
+
+        else:
+            self.win.box()
+            self.win.addstr(1,1,text)
+
+
+
+    def paint_item(self):
+        self.clear()
+        self.paint()
+        self.win.noutrefresh()
 
     @abstractmethod
-    def renderItem(self,window:curses.window):
+    def paint(self):
         raise NotImplementedError()
+
+    def show(self):
+        logger.info("Showing item")
+        self.paint()
+        # self.win.refresh()
+
+    def clear(self):
+        self.win.clear()
+        self.win.noutrefresh()
+        # self.win.refresh()
 
 
 
@@ -1066,22 +1152,11 @@ class Label(DecorationItem):
         super().__init__(**kwargs)
 
 
-    def renderItem(self,window:curses.window):
-        self.win = window
+    def paint(self):
 
-        if self.background != None:
-            self.win.bkgd(" ", curses.color_pair(self.background))
+        self.paint_background()
+        self.paint_insert_text_inside_border(self.text)
 
-        if not self.has_border:
-            logger.info(f"Window size {window.getmaxyx()} and length text = {len(self.text)}")
-            # t = "-" * ( self.win.getmaxyx()[1] -1  )
-            window.insstr(0,0,self.text)
-
-        else:
-            window.box()
-            window.addstr(1,1,self.text)
-
-        window.refresh()
 
 
 
@@ -1102,26 +1177,13 @@ class ButtonBase(Item):
 
 
 
-    def renderItem(self,window:curses.window):
-        self.win = window
+    def paint(self):
 
-        if self.background != None:
-            self.win.bkgd(" ", curses.color_pair(self.background))
+        self.paint_background()
+        self.paint_insert_text_inside_border(self.text)
 
-        else:
-            #Use default color
-            self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_NORMAL))
 
-        if not self.has_border:
-            logger.info(f"Window size {window.getmaxyx()} and length text = {len(self.text)}")
-            # t = "-" * ( self.win.getmaxyx()[1] -1  )
-            window.insstr(0,0,self.text)
-
-        else:
-            window.box()
-            window.addstr(1,1,self.text)
-
-        window.refresh()
+        # window.refresh()
 
 
     def getWin(self):
@@ -1229,6 +1291,7 @@ class ButtonFocusable(ButtonBase,FocusableClient):
 
 
 
+#TODO fix rendering
 class Input(Item,FocusableClient):
     def __init__(self,**kwargs:Unpack[ItemAttributesType]) -> None:
 
@@ -1273,17 +1336,13 @@ class Input(Item,FocusableClient):
 
 
 
-    def renderItem(self,window:curses.window):
-        self.win = window
+    def paint(self):
+        self.paint_background()
 
-        if self.background != None:
-            self.win.bkgd(" ", curses.color_pair(self.background))
-#
         if self.has_border:
-            window.box()
-        self.max_line,self.max_col = window.getmaxyx()
+            self.win.box()
+        self.max_line,self.max_col = self.win.getmaxyx()
         logger.info(f"info max_col es {self.max_col}")
-        window.refresh()
 
 
     def getWin(self):
