@@ -9,9 +9,49 @@ import logging
 from typing import cast
 from UI.properties import Where,Padding,Push,Direction,Status
 from UI.types import ButtonBaseType,Coordinates,LayoutType,ButtonGlobalKeyType,FocusableClientType,ItemAttributesType, ScreenType
+from pathlib import Path
 
 
-logger:logging.Logger
+
+filepath = Path(__file__).parent.parent.parent / "logs" / "TUI.log"
+print(filepath)
+
+with open(filepath,"w+") as f:
+    f.write("")
+
+class CustomAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        extra = self.extra or {}
+
+
+        class_name = str(extra.get("class_name",""))
+        id = str(extra.get("id",""))
+        
+
+        class_name_full = class_name
+
+
+        if id != "":
+            class_name_full += f"({id})"
+
+        extra.setdefault("class_full_name",class_name_full)
+
+        
+
+        kwargs.setdefault("extra",extra)
+        return '%s' % (msg), kwargs
+
+root = logging.getLogger(__name__)
+root.setLevel(logging.INFO)
+hand = logging.FileHandler(filepath)
+formatter = logging.Formatter(fmt="%(class_full_name)s::%(levelname)s %(message)s")
+hand.setFormatter(formatter)
+root.addHandler(hand)
+
+
+logger = CustomAdapter(root)
+
+
 
 '''
 Spotlight is the current screen that receives the input
@@ -63,6 +103,7 @@ class FocusManager:
         self.spotlight:FocusableClient | None = None
 
 
+        self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__})
         self.clients_map:dict[object,FocusableClient] = {}
 
 
@@ -94,7 +135,7 @@ class FocusManager:
 
 
 
-        logger.info(f"Client id is {client.id} | {client} ")
+        self.logger.info(f"Id is {client.id} | {type(client)} ")
         if client.id == None: return
 
         if self.clients_map.get(client.id) != None:
@@ -159,7 +200,7 @@ class FocusManager:
             self.spotlight = self.clients[0]
             self.tell_current_client_gain_focus()
 
-            logger.info(f"Spotlight first {self.spotlight} ")
+            self.logger.debug(f"Set spotlight first client")
 
 
 
@@ -196,7 +237,7 @@ class FocusManager:
         
         #Has moved passed the edge
         if direction == Direction.FORWARD and previous_pos > self.pos:
-            logger.info(f"FocusManager: RIGHT EDGE; We have moved passed the right edge and parent is None ? {self.focus_parent == None }")
+            self.logger.debug(f"RIGHT EDGE; We have moved passed the right edge and parent is None ? {self.focus_parent == None }")
             self.pos = 0
 
             
@@ -206,7 +247,7 @@ class FocusManager:
                 walked_off_the_edge = True
 
         if direction == Direction.BACKWARD and previous_pos < self.pos:
-            logger.info("FocusManager: LEFT EDGE; We have moved passed the left edge")
+            self.logger.debug("FocusManager: LEFT EDGE; We have moved passed the left edge")
             self.pos = len(self.clients) -1
             if self.focus_parent != None:
                 self.focus_parent.move(direction)
@@ -245,17 +286,14 @@ class FocusableClient(ABC):
 
     def __init__(self, **kwargs:Unpack[FocusableClientType]): 
 
-
-        logger.info(f"FocusableCLient initialized and class is {self.__class__}")
-
         self.on_receive_focus:Callable | None = None
         self.on_lose_focus:Callable | None = None
         self.id:object = kwargs.get("id")
 
-
-        # self.focus: FocusManager | None   = None
         self.focus_parent: FocusManager | None = None
 
+        self.shit = str(self.id)
+        self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__,"id":self.shit})
 
         # super().__init__(**kwargs)
 
@@ -276,7 +314,6 @@ class FocusableClient(ABC):
 
     def handleLoseFocus(self,direction:Direction):
         self.defaultHandleLoseFocus(direction)
-        # logger.info("calling onlose xd")
         if self.on_lose_focus != None:
             self.on_lose_focus()
 
@@ -303,13 +340,15 @@ class ScreenHandler():
         self.screens:dict[str,Screen] = {}
 
 
+        self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__})
+
         self.focus = FocusManager()
 
 
     def add_screen(self,screen:"Screen"):
 
         self.focus.add_client(screen)
-        logger.info(f"Adding screen {screen.id}")
+        self.logger.info(f"Add screen({screen.id})")
 
     def removeLight(self):
         self.spotlight = None
@@ -329,7 +368,7 @@ class ScreenHandler():
             self.focus.spotlight.handleKey(c)
             return
 
-        logger.info(f"Screen Spotligh is None ins handleKey")
+        self.logger.debug(f" Spotlight is None in handleKey")
 
 
 
@@ -365,6 +404,7 @@ class Screen(Base,FocusableClient):
         self.visible = False
         
 
+        self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__})
 
 
         super().__init__(**kwargs)
@@ -398,7 +438,7 @@ class Screen(Base,FocusableClient):
 
         
         if isinstance(layout,FocusableClient):
-            logger.info("Adding Focusable Layout")
+            self.logger.info("Adding Focusable Layout")
             self.focus.add_client(layout)
 
 
@@ -417,9 +457,10 @@ class Screen(Base,FocusableClient):
 
         
 
-        logger.info(f"Screen is about to show")
+        self.logger.info(f"Screen is about to show")
 
 
+        
 
         for client in self.focus.clients:
             layout = cast("Layout", client)
@@ -448,7 +489,7 @@ class Screen(Base,FocusableClient):
     def set_spotlight(self,layout:"Layout"):
 
 
-        logger.info(f"set_spotlight is focusableitem {isinstance(layout,FocusableClient)}")
+        self.logger.info(f"set_spotlight is focusableitem {isinstance(layout,FocusableClient)}")
 
         if isinstance(layout,FocusableClient):
             status = self.focus.set_spotlight(layout)
@@ -492,9 +533,10 @@ class Layout(ABC):
     Parent of FocusableLayout and GlobalKeyLayout
     Layout creates the derevied windows for the Items
     '''
-    def __init__(
-        self,**kwargs:Unpack[LayoutType]
-    ) -> None:
+    def __init__(self, **kwargs:Unpack[LayoutType]) -> None:
+
+
+        self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__})
 
         self.postponed_functions = []
 
@@ -549,6 +591,11 @@ class Layout(ABC):
         self.layout_kind = None
         self.spotlight:Item | None = None
 
+
+        # self.logger.debug("yolo")
+        # self.logger.debug(self.__class__.__name__)
+        # self.logger.debug(dir(self))
+
         super().__init__(**kwargs)
 
 
@@ -582,13 +629,13 @@ class Layout(ABC):
         #Only has to as tall as the tallest item
         if self.axis == 'horizontal':
             self.total_width += layout_width 
-            logger.info(f"max height {biggerst_height}")
+            self.logger.debug(f"max height {biggerst_height}")
             self.total_height += biggerst_height
 
         #Only has to as wide as the widest item
         elif self.axis == 'vertical':
             self.total_width += biggest_width
-            logger.info(f"max height {layout_height}")
+            self.logger.debug(f"max height {layout_height}")
             self.total_height += layout_height
             pass
 
@@ -647,7 +694,7 @@ class Layout(ABC):
 
 
 
-        logger.info(f"layout_window size {layout_window.getmaxyx()}")
+        self.logger.debug(f"layout_window size {layout_window.getmaxyx()}")
 
         return layout_window
 
@@ -658,7 +705,7 @@ class Layout(ABC):
 
 
         if self.background != None:
-            logger.info(f"Layout setting background {DefaultColors.LAYOUT_NORMAL}")
+            self.logger.debug(f"Layout setting background {DefaultColors.LAYOUT_NORMAL}")
             self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_NORMAL))
 
         self.layout_window.noutrefresh()
@@ -694,7 +741,7 @@ class Layout(ABC):
 
     def render(self):
 
-        logger.info(f"{'-'*10}RENDERING LAYOUT{'-'*10}")
+        self.logger.info(f"{'-'*10}RENDERING LAYOUT{'-'*10}")
 
         self.total_width = 0
         self.total_height = 0
@@ -703,7 +750,7 @@ class Layout(ABC):
         self.item_current_posy = 0
 
         if len(self.items) <=0:
-            logger.info(f"Layout has no items in screen")
+            self.logger.debug(f"Layout has no items in screen")
             self.layout_window = self._create_layout_window()
             return
 
@@ -741,8 +788,8 @@ class Layout(ABC):
                 
 
             a  = self.layout_window.getmaxyx()
-            logger.info(f"menuwin lines={a[0]} cols={a[1]}")
-            logger.info(f"itemwin lines={win_lines} cols={win_cols} posy={self.item_current_posy} posx={self.item_current_posx} ")
+            self.logger.debug(f"menuwin lines={a[0]} cols={a[1]}")
+            self.logger.debug(f"itemwin lines={win_lines} cols={win_cols} posy={self.item_current_posy} posx={self.item_current_posx} ")
 
             item_win:curses.window = self.layout_window.derwin(
                 win_lines,
@@ -774,7 +821,7 @@ class Layout(ABC):
 
 
         # if self.background != None:
-        #     logger.info(f"Layout setting background {DefaultColors.LAYOUT_NORMAL}")
+        #     self.logger.debug(f"Layout setting background {DefaultColors.LAYOUT_NORMAL}")
         #     self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_NORMAL))
 
         # self.layout_window.refresh()
@@ -783,7 +830,7 @@ class Layout(ABC):
         # if isinstance(self.spotlight,FocusableItem):
         #     self.spotlight.handleGetFocus()
 
-        logger.info(f"{'-'*10}END RENDERING LAYOUT{'-'*10}")
+        self.logger.info(f"{'-'*10}END RENDERING LAYOUT{'-'*10}")
     
 
     def register_global_key(self,key:int | str,callable:Callable):
@@ -851,7 +898,7 @@ class Layout(ABC):
         if self.hasBorder:
             self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_FOCUSED))
             self.layout_window.refresh()
-        logger.info("Layout receive focus")
+        self.logger.debug("Layout receive focus")
 
 
     def handle_lose_focus(self,from_where:Direction):
@@ -859,7 +906,7 @@ class Layout(ABC):
         if self.hasBorder:
             self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_NORMAL))
             self.layout_window.refresh()
-        logger.info("Layout  losing focus")
+        self.logger.debug("Layout  losing focus")
 
 
 
@@ -1047,6 +1094,8 @@ class Item(ABC):
         **kwargs
     ) -> None:
 
+        
+
         self.layout_api:Layout
 
         self.has_border = hasBorder
@@ -1084,7 +1133,7 @@ class Item(ABC):
     def paint_insert_text_inside_border(self,text):
 
         if not self.has_border:
-            logger.info(f"self.win size {self.win.getmaxyx()} and length text = {len(text)}")
+            self.logger.info(f"self.win size {self.win.getmaxyx()} and length text = {len(text)}")
             self.win.insstr(0,0,text)
 
         else:
@@ -1103,7 +1152,7 @@ class Item(ABC):
         raise NotImplementedError()
 
     def show(self):
-        logger.info("Showing item")
+        self.logger.info("Showing item")
         self.paint()
         # self.win.refresh()
 
@@ -1238,7 +1287,6 @@ class ButtonFocusable(ButtonBase,FocusableClient):
 
     def __init__(self,**kwargs:Unpack[ButtonBaseType]) -> None:
 
-        logger.info("ButtonFocusable init")
         text =  kwargs.get('text') 
 
         kwargs.setdefault("lines",1 )
@@ -1246,6 +1294,8 @@ class ButtonFocusable(ButtonBase,FocusableClient):
         super().__init__(**kwargs)
 
 
+
+        self.logger.info("init")
         self.actions:dict = {} # type: ignore
 
 
@@ -1256,7 +1306,7 @@ class ButtonFocusable(ButtonBase,FocusableClient):
                 raise Exception(f"addKeyAction, key length is {len(key)}")
             key = ord(key)
         
-        logger.info(f"Adding key {key}")
+        self.logger.info(f"Adding key {key}")
 
 
         self.actions[key] = callable
@@ -1268,15 +1318,15 @@ class ButtonFocusable(ButtonBase,FocusableClient):
         if self.has_border:
             self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_FOCUSED))
             self.win.refresh()
-            logger.info("focusablebutton chaning color")
-        logger.info("button receiving focus")
+            self.logger.info("focusablebutton chaning color")
+        self.logger.info("button receiving focus")
         # print("shit")
 
     def defaultHandleLoseFocus(self,direction:Direction):
         if self.has_border:
             self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_NORMAL))
             self.win.refresh()
-        logger.info("button loosing focus")
+        self.logger.info("button loosing focus")
 
     def handleKey(self, c):
 
@@ -1284,7 +1334,7 @@ class ButtonFocusable(ButtonBase,FocusableClient):
             self.actions[c]()
 
 
-        logger.info(f"Buttonfocusable handling key {c}")
+        self.logger.info(f"Buttonfocusable handling key {c}")
         # print("handling")
 
 
@@ -1322,8 +1372,8 @@ class Input(Item,FocusableClient):
         if self.has_border:
             self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_FOCUSED))
             self.win.refresh()
-            logger.info("Input changes color")
-        logger.info("button receiving focus")
+            self.logger.info("Input changes color")
+        self.logger.info("button receiving focus")
 
     def defaultHandleLoseFocus(self,direction:Direction):
 
@@ -1331,7 +1381,7 @@ class Input(Item,FocusableClient):
         if self.has_border:
             self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_NORMAL))
             self.win.refresh()
-        logger.info("Input loosing focus")
+        self.logger.info("Input loosing focus")
 
 
 
@@ -1342,14 +1392,14 @@ class Input(Item,FocusableClient):
         if self.has_border:
             self.win.box()
         self.max_line,self.max_col = self.win.getmaxyx()
-        logger.info(f"info max_col es {self.max_col}")
+        self.logger.info(f"info max_col es {self.max_col}")
 
 
     def getWin(self):
         return self.win
 
     def handleKey(self,c):
-        logger.info(f"handling key in input {c}")
+        self.logger.info(f"handling key in input {c}")
 
         
 
