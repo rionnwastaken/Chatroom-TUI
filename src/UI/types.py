@@ -9,11 +9,15 @@ class Coordinates(TypedDict):
     topy:int
 
 
-class FocusableClientType(TypedDict,total=False):
+class BaseType(TypedDict,total=False):
     id:str | None
 
 
-class LayoutType(FocusableClientType,total=False):
+
+# class BaseType(TypedDict,total=False): id:str | None
+
+
+class LayoutType(BaseType,total=False):
     coordinates:Coordinates | None
     where:Where | None
     hasBorder:bool
@@ -23,7 +27,7 @@ class LayoutType(FocusableClientType,total=False):
     push:Push
 
 
-class ItemAttributesType(FocusableClientType,total=False):
+class ItemAttributesType(BaseType,total=False):
      push:Push
      padding:Padding
      hasBorder:bool
@@ -34,7 +38,7 @@ class ItemAttributesType(FocusableClientType,total=False):
      max_width:int
 
 
-class ScreenType(FocusableClientType,total=False):
+class ScreenType(BaseType,total=False):
     background:int | None
 
 

@@ -8,7 +8,7 @@ import logging
 
 from typing import cast
 from UI.properties import Where,Padding,Push,Direction,Status
-from UI.types import ButtonBaseType,Coordinates,LayoutType,ButtonGlobalKeyType,FocusableClientType,ItemAttributesType, ScreenType
+from UI.types import ButtonBaseType,Coordinates,LayoutType,ButtonGlobalKeyType,BaseType,ItemAttributesType, ScreenType
 from pathlib import Path
 
 
@@ -42,7 +42,7 @@ class CustomAdapter(logging.LoggerAdapter):
         return '%s' % (msg), kwargs
 
 root = logging.getLogger(__name__)
-root.setLevel(logging.INFO)
+root.setLevel(logging.DEBUG)
 hand = logging.FileHandler(filepath)
 formatter = logging.Formatter(fmt="%(class_full_name)s::%(levelname)s %(message)s")
 hand.setFormatter(formatter)
@@ -86,6 +86,13 @@ class DefaultColors:
         curses.init_pair(d.LAYOUT_FOCUSED,curses.COLOR_GREEN,-1)
 
 
+class Base(ABC):
+    def __init__(self,**kwargs) -> None:
+        self.id:object = kwargs.pop("id",None) 
+        self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__})
+        super().__init__(**kwargs)
+
+
 
 
 
@@ -121,7 +128,7 @@ class FocusManager:
         """     
         return len(self.clients)
 
-    def add_client(self,client:"FocusableClient"):
+    def add_client(self,client:"Base"):
         if client == None:
             raise Exception("Error: Trying to add client that is None")
 
@@ -135,6 +142,7 @@ class FocusManager:
 
 
 
+
         self.logger.info(f"Id is {client.id} | {type(client)} ")
         if client.id == None: return
 
@@ -142,6 +150,8 @@ class FocusManager:
             raise Exception(f"Error: Adding client that has the same id as {self.clients_map.get(client.id)}")
 
         self.clients_map[client.id] = client
+
+        self.logger.debug(f"Register client {client.id}")
 
 
     def tell_current_client_lose_focus(self):
@@ -183,6 +193,7 @@ class FocusManager:
         client = self.clients_map.get(id)
 
         if client == None:
+            self.logger.debug(f"{list( self.clients_map.keys() )}")
             raise Exception(f"Error: Client could not be found with the id of {id}")
 
         status = self.set_spotlight(client)
@@ -284,18 +295,17 @@ class FocusManager:
 class FocusableClient(ABC):
 
 
-    def __init__(self, **kwargs:Unpack[FocusableClientType]): 
+    def __init__(self, **kwargs:Unpack[BaseType]): 
 
         self.on_receive_focus:Callable | None = None
         self.on_lose_focus:Callable | None = None
-        self.id:object = kwargs.get("id")
+        
 
         self.focus_parent: FocusManager | None = None
 
-        self.shit = str(self.id)
-        self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__,"id":self.shit})
+        
 
-        # super().__init__(**kwargs)
+        
 
     def createFocus(self):
         if self.focus != None:
@@ -341,7 +351,6 @@ class ScreenHandler():
 
 
         self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__})
-
         self.focus = FocusManager()
 
 
@@ -392,6 +401,10 @@ There is no global_keys for the screen, at least one layout forcefully needs spo
 '''
 
 
+
+# class LayoutApi(Protocol):
+
+
 class Screen(Base,FocusableClient):
 
     terminal_window:curses.window
@@ -400,11 +413,13 @@ class Screen(Base,FocusableClient):
         term_lines,term_cols = Screen.terminal_window.getmaxyx() 
 
         self.screen_window = curses.newwin(term_lines,term_cols,0,0)
+
+        
         self.background = kwargs.pop("background",None)
         self.visible = False
         
 
-        self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__})
+        
 
 
         super().__init__(**kwargs)
@@ -526,7 +541,7 @@ class Screen(Base,FocusableClient):
 
 
 
-class Layout(ABC):
+class Layout(Base,ABC):
     ''' 
     A layout is a window that holds items
     It calculates the  required dimensions to fit the items
@@ -536,7 +551,6 @@ class Layout(ABC):
     def __init__(self, **kwargs:Unpack[LayoutType]) -> None:
 
 
-        self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__})
 
         self.postponed_functions = []
 
@@ -592,9 +606,9 @@ class Layout(ABC):
         self.spotlight:Item | None = None
 
 
-        # self.logger.debug("yolo")
-        # self.logger.debug(self.__class__.__name__)
-        # self.logger.debug(dir(self))
+        
+        
+        
 
         super().__init__(**kwargs)
 
@@ -724,18 +738,6 @@ class Layout(ABC):
             item.paint_item()
 
         curses.doupdate()
-
-        
-        if len(self.postponed_functions) > 0:
-            self.logger.info("Start to run postponed functions")
-
-            for action in self.postponed_functions:
-                action()
-                pass
-
-            self.postponed_functions.clear()
-            self.logger.info("End of run postponed functions")
-
         
 
 
@@ -820,15 +822,15 @@ class Layout(ABC):
                     ])
 
 
-        # if self.background != None:
-        #     self.logger.debug(f"Layout setting background {DefaultColors.LAYOUT_NORMAL}")
-        #     self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_NORMAL))
+        
+        
+        
 
-        # self.layout_window.refresh()
+        
 
 
-        # if isinstance(self.spotlight,FocusableItem):
-        #     self.spotlight.handleGetFocus()
+        
+        
 
         self.logger.info(f"{'-'*10}END RENDERING LAYOUT{'-'*10}")
     
@@ -878,7 +880,7 @@ class Layout(ABC):
             self.items.append(item)
 
 
-        # self._render()
+        
 
         return items[-1]
 
@@ -927,7 +929,7 @@ class FocusableLayout(Layout,FocusableClient):
 
 
         self.focus = FocusManager()
-        # self.createFocus()
+        
 
     def add_items(self,*items:"Item"):
         last_item = super().add_items(*items)
@@ -943,7 +945,7 @@ class FocusableLayout(Layout,FocusableClient):
 
 
         
-        # self.focus.set_spotlight_last()
+        
         return last_item
 
         
@@ -1079,7 +1081,7 @@ class DecorationLayout(Layout):
 Item can hold anything, it only cares about its dimensions 
 Item is widget holder for example for labels ,inputs
 '''
-class Item(ABC):
+class Item(Base,ABC):
 
     def __init__(
         self,
@@ -1154,12 +1156,12 @@ class Item(ABC):
     def show(self):
         self.logger.info("Showing item")
         self.paint()
-        # self.win.refresh()
+        
 
     def clear(self):
         self.win.clear()
         self.win.noutrefresh()
-        # self.win.refresh()
+        
 
 
 
@@ -1174,11 +1176,11 @@ class GlobalKeyItem(Item,ABC):
     Item that does action when its global_key is pressed
     """
 
-    # def __init__(self,global_key,lines: int, cols: int, push=Push(), padding=Padding(), hasBorder=False, background=None) -> None:
+    
     def __init__(self,global_key,global_key_char,**kwargs) -> None:
         self.global_key = global_key
         super().__init__(**kwargs)
-        # Item.__init__(self,lines, cols, push, padding, hasBorder, background)
+        
         
 
     @abstractmethod
@@ -1232,7 +1234,7 @@ class ButtonBase(Item):
         self.paint_insert_text_inside_border(self.text)
 
 
-        # window.refresh()
+        
 
 
     def getWin(self):
@@ -1310,7 +1312,7 @@ class ButtonFocusable(ButtonBase,FocusableClient):
 
 
         self.actions[key] = callable
-        # return super().addAction(c)
+        
 
 
     def defaultHandleGetFocus(self,direction:Direction):
@@ -1320,7 +1322,7 @@ class ButtonFocusable(ButtonBase,FocusableClient):
             self.win.refresh()
             self.logger.info("focusablebutton chaning color")
         self.logger.info("button receiving focus")
-        # print("shit")
+        
 
     def defaultHandleLoseFocus(self,direction:Direction):
         if self.has_border:
@@ -1335,7 +1337,7 @@ class ButtonFocusable(ButtonBase,FocusableClient):
 
 
         self.logger.info(f"Buttonfocusable handling key {c}")
-        # print("handling")
+        
 
 
 
@@ -1418,13 +1420,13 @@ class Input(Item,FocusableClient):
             if self.cursorx < 0:
                 return
             
-            # self.win.delch(self.cursory,self.cursorx)
+            
 
             self.win.move(self.cursory,self.cursorx)
             self.win.addch(" ")
             self.win.move(self.cursory,self.cursorx)
             self.cursorx += -1
-            # self.win.move(self.cursory,self.cursorx)
+            
             self.win.refresh()
             return
 
@@ -1456,12 +1458,12 @@ class Input(Item,FocusableClient):
 
         self.win.move(self.cursory,self.cursorx)
         self.win.addch(self.cursory,self.cursorx,c)
-        # self.win.insch(c)
+        
         self.win.refresh()
 
 
 
-#hey
+
 
 
 if __name__ == "__main__":
