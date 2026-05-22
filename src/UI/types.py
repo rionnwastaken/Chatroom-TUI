@@ -13,10 +13,6 @@ class BaseType(TypedDict,total=False):
     id:str | None
 
 
-
-# class BaseType(TypedDict,total=False): id:str | None
-
-
 class LayoutType(BaseType,total=False):
     coordinates:Coordinates | None
     where:Where | None
