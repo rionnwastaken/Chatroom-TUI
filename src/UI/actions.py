@@ -1,6 +1,6 @@
 import curses
 from logging import Logger
-from UI.ui import ScreenHandler,Item
+from UI.ui import ScreenHandler,Item,GlobalFocusManager
 
 
 class ReusableActions():
@@ -57,5 +57,5 @@ class ReusableActions():
     def changeScreen(self,screen_identifier:str):
         def inner():
             self.logger.info("Changing screen?")
-            self.screenhandler.set_spotlight_byid(screen_identifier)  
+            GlobalFocusManager.set_spotlight_byid(screen_identifier)
         return inner

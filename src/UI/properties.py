@@ -5,6 +5,9 @@ class Direction(IntEnum):
     FORWARD = auto()
     BACKWARD = auto()
     JUMP = auto()
+    SCREEN_JUMP = auto()
+
+
 
 
 class Status(IntEnum):

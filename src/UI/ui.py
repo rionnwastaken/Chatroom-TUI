@@ -1,6 +1,7 @@
 import curses
 from enum import IntEnum, StrEnum,auto
 from io import DEFAULT_BUFFER_SIZE
+from os import name
 from types import NoneType
 from typing import Callable, Dict,Literal, Tuple,TypedDict,Protocol,Required,NotRequired, Unpack
 from abc import ABC, abstractmethod
@@ -11,6 +12,7 @@ from UI.properties import Where,Padding,Push,Direction,Status
 from UI.types import ButtonBaseType,Coordinates,LayoutType,ButtonGlobalKeyType,BaseType,ItemAttributesType, ScreenType
 from pathlib import Path
 
+#TODO for tomorrow, make a distinction when a screen gets focus in the focusmanagers, like getting focus from within the screen or other screen
 
 
 filepath = Path(__file__).parent.parent.parent / "logs" / "TUI.log"
@@ -23,18 +25,26 @@ class CustomAdapter(logging.LoggerAdapter):
     def process(self, msg, kwargs):
         extra = self.extra or {}
 
+        
+        focusmanager = extra.get("focusmanager",None)
+        if focusmanager != None:
+            extra.setdefault("class_full_name",focusmanager) #type:ignore
+            kwargs.setdefault("extra",extra)
+            return '%s' % (msg), kwargs
+
+
 
         class_name = str(extra.get("class_name",""))
-        id = str(extra.get("id",""))
+        id = str(extra.get("id",None))
         
 
         class_name_full = class_name
 
 
-        if id != "":
+        if id != None:
             class_name_full += f"({id})"
 
-        extra.setdefault("class_full_name",class_name_full)
+        extra.setdefault("class_full_name",class_name_full)#type:ignore
 
         
 
@@ -89,8 +99,20 @@ class DefaultColors:
 class Base(ABC):
     def __init__(self,**kwargs) -> None:
         self.id:object = kwargs.pop("id",None) 
-        self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__})
+        self.class_name = self.__class__.__name__
+        self.full_name = self._create_full_name()
+        self.logger = CustomAdapter(root,{"class_name":self.class_name,"id":self.id})
+        self.parent:None | object = None
         super().__init__(**kwargs)
+
+
+    def _create_full_name(self):
+        n = f"{self.class_name}"
+        if self.id != None:
+            n += f"({self.id})"
+
+        return n
+
 
 
 
@@ -98,19 +120,100 @@ class Base(ABC):
 
 class GlobalFocusManager:
     """ """
-    pass
+
+    # screens_map:dict[object,"Base"] = {}
+    all_map:dict[object,"Base"] = {}
+    all_clients = []
+    logger = CustomAdapter(root,{"class_name":"GlobalFocusManager"})
+
+    @staticmethod
+    def _register(client:"Base"):
+
+        if client.id != None:
+            GlobalFocusManager.logger.debug(f"Registering {client.full_name}")
+            GlobalFocusManager.all_map[client.id] = client
+            GlobalFocusManager.all_clients.append(client)
+
+        
+    
+
+    @staticmethod
+    def set_spotlight_byid(id:object):
+
+
+        client = GlobalFocusManager.all_map.get(id,None)
+        if client == None:
+            raise Exception(f"Screen not available")
+        GlobalFocusManager.set_spotlight(client)
+
+
+
+    @staticmethod
+    def get_parents(client:"Base") ->list[tuple[object,object]]:
+        """Returns parents from oldest to youngest"""
+        parents = []
+
+        pointer = client
+        while True:
+
+            previous = pointer
+            parent = pointer.parent 
+            pointer = parent
+            if parent == None:
+                break
+            parents.append(( parent,previous ))
+
+
+        parents.reverse()
+        return parents
+
+
+
+
+    @staticmethod
+    def set_spotlight(client:"Base"):
+
+        if not isinstance(client,FocusableClient):
+            raise Exception(f"Error: Trying to set spotlight to class that is not instance of FocusableClient\n{client}{client.__class__.mro()}")
+
+        if client in GlobalFocusManager.all_clients:
+            parents = GlobalFocusManager.get_parents(client)
+            # GlobalFocusManager.logger.info(parents)
+            # return
+            length =  len(parents)
+            
+
+
+            for parent,child in parents:
+                if hasattr(parent,"focus"):
+                    if isinstance(parent.focus,FocusManager): #type:ignore
+                        parent.focus.set_spotlight(child)#type:ignore
+
+            return
+
+        raise Exception("Error: client {client} is not registered in GlobalFocusManager")
+
+
+
+
+
+
+
+
 
 
 
 class FocusManager:
 
-    def __init__(self) -> None:
+    def __init__(self,class_name,id) -> None:
         self.clients:list["FocusableClient"]  = []
         self.pos = -1 #As clients are added, it increases, so to start with the correct index
         self.spotlight:FocusableClient | None = None
 
 
-        self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__})
+        
+        self.fullname = self._get_class_name(class_name,id)
+        self.logger = CustomAdapter(root,{"focusmanager":self.fullname})
         self.clients_map:dict[object,FocusableClient] = {}
 
 
@@ -118,6 +221,10 @@ class FocusManager:
 
 
         self.should_empty_layout_be_focusable = False
+
+    def _get_class_name(self,class_name,id):
+        id = id or ""
+        return f"FocusManager({class_name})({id})"
 
 
 
@@ -135,7 +242,7 @@ class FocusManager:
         if not isinstance(client,FocusableClient):
             raise Exception("Client is not instance of Focusable Client")
 
-
+        GlobalFocusManager._register(client)
         self.clients.append(client)
         self.spotlight = client
         self.pos = self.pos + 1
@@ -147,23 +254,28 @@ class FocusManager:
         if client.id == None: return
 
         if self.clients_map.get(client.id) != None:
-            raise Exception(f"Error: Adding client that has the same id as {self.clients_map.get(client.id)}")
+            raise Exception(f"Adding client that has the same id ({client.id})as {self.clients_map.get(client.id)}")
 
         self.clients_map[client.id] = client
 
-        self.logger.debug(f"Register client {client.id}")
 
 
-    def tell_current_client_lose_focus(self):
+    def tell_current_client_lose_focus(self,direction:Direction):
         if self.spotlight != None:
+            self.logger.info(f"Tell Current client lose focus {self.spotlight.__class__}")
             self.spotlight.handleLoseFocus(Direction.JUMP)
         pass
 
 
-    def tell_current_client_gain_focus(self):
+    def tell_current_client_gain_focus(self,direction:Direction):
         if self.spotlight != None:
-            self.spotlight.handleGetFocus(Direction.JUMP)
+
+            self.logger.info(f"Tell Current client gain focus {self.spotlight.__class__}")
+            self.logger.debug(f"Clients are {self.clients}")
+            self.spotlight.handleGetFocus(direction)
         pass
+    
+
     
     
     def set_spotlight(self,client:"FocusableClient") -> Status:
@@ -172,19 +284,23 @@ class FocusManager:
         """ 
 
         
-        self.logger.info(f"Tell Current client lose focus {self.spotlight.__class__}")
+        if self.spotlight == client:
+            self.logger.debug("Skipping setting spotlight cause the requested client is the current spotlight")
+            return Status.OK
+        
+        
 
-        self.tell_current_client_lose_focus()
+        self.tell_current_client_lose_focus(Direction.JUMP)
 
         if client not in self.clients:
-            return Status.ERR
+            raise Exception(f"The client with id {client.id} is not registered to {self.fullname}")
 
         index = self.clients.index(client)
         self.pos = index
         self.spotlight = client
 
-        self.logger.info(f"Tell Current client gain focus {self.spotlight.__class__}")
-        self.tell_current_client_gain_focus()
+        
+        self.tell_current_client_gain_focus(Direction.JUMP)
         
         return Status.OK
 
@@ -199,31 +315,41 @@ class FocusManager:
         status = self.set_spotlight(client)
 
         if status == Status.ERR:
-            raise Exception(f"There was error when setting spotlight by id.The client with id {id} is not registered")
+            raise Exception(f"The client with id {id} is not registered")
 
 
-    def set_spotlight_first(self):
-        self.tell_current_client_lose_focus()
+    def set_spotlight_first(self,direction:Direction):
+        self.tell_current_client_lose_focus(direction)
 
         
         if len(self.clients) >= 1:
+            if isinstance(self.spotlight,Base):
+                self.logger.debug(f"Set spotlight first client {self.spotlight.full_name}")
+
             self.pos = 0
             self.spotlight = self.clients[0]
-            self.tell_current_client_gain_focus()
-
-            self.logger.debug(f"Set spotlight first client")
+            self.tell_current_client_gain_focus(direction)
 
 
 
-    def set_spotlight_last(self):
+
+    def set_spotlight_last(self,direction:Direction):
         if len(self.clients) >= 1:
-            self.tell_current_client_lose_focus()
+            if isinstance(self.spotlight,Base):
+                self.logger.debug(f"Set spotlight last {self.spotlight.full_name}")
+
+            self.tell_current_client_lose_focus(direction)
             self.pos = len(self.clients) -1
             self.spotlight = self.clients[-1]
-            self.tell_current_client_gain_focus()
+            self.tell_current_client_gain_focus(direction)
 
 
-    def move(self,direction:Direction):
+    def move(self, direction:Direction):
+        """
+        walked_off_the_edge -> Reached the end of the list
+
+
+        """
 
         if self.spotlight != None:
             self.spotlight.handleLoseFocus(direction)
@@ -235,20 +361,19 @@ class FocusManager:
         if len(self.clients ) >= 1:
             self.pos = (self.pos + power) % len(self.clients)
         
-
-
-
         """
         If we move passed  the edge and wind up in another layout
         """
         
         walked_off_the_edge = False
-        
 
+        self.logger.debug(f"Has spotlight ? f{self.spotlight != None} and pos is {self.pos}")
         
         #Has moved passed the edge
         if direction == Direction.FORWARD and previous_pos > self.pos:
-            self.logger.debug(f"RIGHT EDGE; We have moved passed the right edge and parent is None ? {self.focus_parent == None }")
+            self.logger.debug(f"Moved passed RIGHT EDGE")
+            self.logger.debug(f"Has parent ?{self.focus_parent != None }")
+
             self.pos = 0
 
             
@@ -265,8 +390,9 @@ class FocusManager:
                 walked_off_the_edge = True
 
 
-        #Layout has only 1 item so pos always is the same
+        #Manager has only 1 client so pos always is the same
         if previous_pos == self.pos:
+            self.logger.debug("Previous pos == self.pos which means there is only 1 client in this focusmanager")
             if self.focus_parent != None:
                 self.focus_parent.move(direction)
                 walked_off_the_edge = True
@@ -278,6 +404,8 @@ class FocusManager:
         if len( self.clients ) >=1:
             self.spotlight = self.clients[self.pos]
 
+
+        """Not walking off the edge means still inside the boundaries of the current focusmanager """
         if not walked_off_the_edge and self.spotlight != None:
             self.spotlight.handleGetFocus(direction)
 
@@ -299,20 +427,14 @@ class FocusableClient(ABC):
 
         self.on_receive_focus:Callable | None = None
         self.on_lose_focus:Callable | None = None
-        
-
-        self.focus_parent: FocusManager | None = None
 
         
 
+
         
 
-    def createFocus(self):
-        if self.focus != None:
-            raise Exception("Error: Trying to createFocus when it already existed")
+        
 
-        self.focus = FocusManager()
-        return self.focus
 
 
     def handleGetFocus(self,direction:Direction):
@@ -342,20 +464,31 @@ class FocusableClient(ABC):
 
 
 
-class ScreenHandler():
+class ScreenHandler(Base):
     def __init__(self,terminal_window) -> None:
         Screen.terminal_window = terminal_window
         self.terminal_window = terminal_window
         self.spotlight:Screen | None = None
         self.screens:dict[str,Screen] = {}
 
+        self.global_actions:dict[int,Callable] = {}
 
-        self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__})
-        self.focus = FocusManager()
+
+        # self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__})
+        kwargs = {
+                "id":"root"
+                }
+
+        super().__init__(**kwargs)
+        self.focus = FocusManager(self.class_name,self.id)
 
 
     def add_screen(self,screen:"Screen"):
 
+        
+
+
+        screen.parent = self
         self.focus.add_client(screen)
         self.logger.info(f"Add screen({screen.id})")
 
@@ -363,15 +496,31 @@ class ScreenHandler():
         self.spotlight = None
 
 
-    def set_spotlight(self,screen:"Screen"):
-        self.focus.set_spotlight(screen)
+    def addAction(self,key: str | int,callable: Callable): # type: ignore
 
+        if isinstance(key,str):
+            if len(key) != 1:
+                raise Exception(f"addKeyAction, key length is {len(key)}")
+            key = ord(key)
+        
+        self.logger.info(f"Adding key {key}")
+        self.global_actions[key] = callable
 
-    def set_spotlight_byid(self,id):
-        self.logger.debug(f"Set spotlight by id")
-        self.focus.set_spotlight_byid(id)
+    #
+    # def set_spotlight(self,screen:"Screen"):
+    #     self.focus.set_spotlight(screen)
+    #
+    #
+    # def set_spotlight_byid(self,id):
+    #     self.logger.debug(f"Set spotlight by id")
+    #     self.focus.set_spotlight_byid(id)
 
     def handleKey(self,c):
+
+        if c in self.global_actions:
+            self.logger.debug("Doign global action screenhandler")
+            self.global_actions[c]()
+            return
 
         if self.focus.spotlight != None:
             self.focus.spotlight.handleKey(c)
@@ -423,7 +572,7 @@ class Screen(Base,FocusableClient):
 
 
         super().__init__(**kwargs)
-        self.focus = FocusManager()
+        self.focus = FocusManager(self.class_name,self.id)
         
 
     def get_screen_size(self):
@@ -448,8 +597,11 @@ class Screen(Base,FocusableClient):
 
 
     def add_layout(self,layout:"Layout"):
+        logger.info("Adding layout")
         layout.screen = self
         
+
+        layout.parent = self
 
         
         if isinstance(layout,FocusableClient):
@@ -457,11 +609,11 @@ class Screen(Base,FocusableClient):
             self.focus.add_client(layout)
 
 
-            #Every client must know their parent
-            layout.focus_parent = self.focus
 
-            if layout.focus != None:
-                layout.focus.focus_parent = self.focus
+        if isinstance(layout,FocusableLayout) or isinstance(layout,GlobalKeyLayout) :
+            self.logger.debug(f"Set reference of focus to {layout.class_name} {layout.id}")
+            # self.logger.debug("parent is not None?{}")
+            layout.focus.focus_parent = self.focus
 
 
     def show(self):
@@ -485,14 +637,9 @@ class Screen(Base,FocusableClient):
         if self.background != None:
             self.screen_window.bkgd(" ",curses.color_pair(self.background))
 
-        
 
-        
-        if self.focus.spotlight == None:
-            self.focus.set_spotlight_first()
-        else:
-            self.focus.tell_current_client_gain_focus()
 
+        self.focus.set_spotlight_first(Direction.SCREEN_JUMP)
         self.screen_window.refresh()
 
 
@@ -501,20 +648,20 @@ class Screen(Base,FocusableClient):
 
 
 
-    def set_spotlight(self,layout:"Layout"):
-
-
-        self.logger.info(f"set_spotlight is focusableitem {isinstance(layout,FocusableClient)}")
-
-        if isinstance(layout,FocusableClient):
-            status = self.focus.set_spotlight(layout)
-            if status == Status.ERR:
-                raise Exception("Error: Trying to set spotlight to layout that is not registered in clients.\nMake sure you set the spotlight after the layout has been added to the screen")
-
-            return
-
-
-        raise Exception("Error: Cannot set spotlight to a a layout that is not a focusableClient")
+    # def set_spotlight(self,layout:"Layout"):
+    #
+    #
+    #     self.logger.info(f"set_spotlight is focusableitem {isinstance(layout,FocusableClient)}")
+    #
+    #     if isinstance(layout,FocusableClient):
+    #         status = self.focus.set_spotlight(layout)
+    #         if status == Status.ERR:
+    #             raise Exception("Error: Trying to set spotlight to layout that is not registered in clients.\nMake sure you set the spotlight after the layout has been added to the screen")
+    #
+    #         return
+    #
+    #
+    #     raise Exception("Error: Cannot set spotlight to a a layout that is not a focusableClient")
             
 
 
@@ -698,12 +845,21 @@ class Layout(Base,ABC):
 
 
 
+        win = self.screen.get_window()
+        maxY,maxX = win.getmaxyx()
+
+        if (self.total_height + topy) >= maxY:
+            raise Exception("Dont worry, be happy")
+
+        self.logger.debug(f"Deriving window heigth widh topy topx {self.total_height} {self.total_width} {topy} {topx} {self.screen.get_window()}")
         layout_window = self.screen.get_window().derwin(
             self.total_height,
             self.total_width,
             topy,
             topx
         )
+
+        self.logger.debug("Deriving window finnished")
 
 
 
@@ -876,6 +1032,7 @@ class Layout(Base,ABC):
                     raise error
                 
 
+            item.parent = self
             item.layout_api = self
             self.items.append(item)
 
@@ -928,7 +1085,7 @@ class FocusableLayout(Layout,FocusableClient):
         super().__init__(**kwargs)
 
 
-        self.focus = FocusManager()
+        self.focus = FocusManager(self.class_name,self.id)
         
 
     def add_items(self,*items:"Item"):
@@ -957,18 +1114,18 @@ class FocusableLayout(Layout,FocusableClient):
         return False, Exception(f"Item {item.__class__.__name__} is not compatible with Layout {self.__class__.__name__}")
 
 
-    def set_spotlight(self,item:"Item"):
-
-        if not isinstance(item,FocusableClient):
-            raise Exception("Error: Trying to set spotlight to item that is not a FocusableClient")
-
-
-        if self.screen.visible:
-            self.focus.set_spotlight(item)
-
-        else:
-            # self.focus.spotlight = 
-            self.postponed_functions.append(lambda:self.focus.set_spotlight(item))
+    # def set_spotlight(self,item:"Item"):
+    #
+    #     if not isinstance(item,FocusableClient):
+    #         raise Exception("Error: Trying to set spotlight to item that is not a FocusableClient")
+    #
+    #
+    #     if self.screen.visible:
+    #         self.focus.set_spotlight(item)
+    #
+    #     else:
+    #         # self.focus.spotlight = 
+    #         self.postponed_functions.append(lambda:self.focus.set_spotlight(item))
 
 
 
@@ -996,26 +1153,20 @@ class FocusableLayout(Layout,FocusableClient):
 
         super().handle_receive_focus(direction)
 
-        if self.focus.spotlight != None:
-            self.focus.tell_current_client_gain_focus()
-            return
 
-
-        if direction == Direction.FORWARD:
-            self.focus.set_spotlight_first()
-    
+        if direction == Direction.FORWARD or direction == Direction.SCREEN_JUMP:
+            self.focus.set_spotlight_first(direction)
 
         if direction == Direction.BACKWARD:
-            self.focus.set_spotlight_last()
-
+            self.focus.set_spotlight_last(direction)
 
         if direction == Direction.JUMP:
-            self.focus.set_spotlight_first()
+            self.focus.tell_current_client_gain_focus(direction)
 
 
     def defaultHandleLoseFocus(self, direction: Direction):
         super().handle_lose_focus(direction)
-        self.focus.tell_current_client_lose_focus()
+        self.focus.tell_current_client_lose_focus(direction)
 
 
 class GlobalKeyLayout(Layout,FocusableClient):
@@ -1026,7 +1177,9 @@ class GlobalKeyLayout(Layout,FocusableClient):
 
     def __init__(self, **kwargs:Unpack[LayoutType]) -> None:
         super().__init__(**kwargs)
-        self.focus = FocusManager()
+        
+        self.focus = FocusManager(self.class_name,self.id)
+
 
     def handleKey(self,c):
 
@@ -1038,7 +1191,7 @@ class GlobalKeyLayout(Layout,FocusableClient):
 
         if c == ord("\t") or c == curses.KEY_BTAB:
             direction = Direction.FORWARD if c == ord("\t") else Direction.BACKWARD 
-            self.focus_parent.move(direction)
+            self.focus.focus_parent.move(direction)
             return
 
 
@@ -1321,14 +1474,15 @@ class ButtonFocusable(ButtonBase,FocusableClient):
             self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_FOCUSED))
             self.win.refresh()
             self.logger.info("focusablebutton chaning color")
-        self.logger.info("button receiving focus")
+        self.logger.info("Receiving focus")
         
 
     def defaultHandleLoseFocus(self,direction:Direction):
         if self.has_border:
             self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_NORMAL))
             self.win.refresh()
-        self.logger.info("button loosing focus")
+        self.logger.info("Loosing focus")
+
 
     def handleKey(self, c):
 
@@ -1375,7 +1529,7 @@ class Input(Item,FocusableClient):
             self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_FOCUSED))
             self.win.refresh()
             self.logger.info("Input changes color")
-        self.logger.info("button receiving focus")
+        self.logger.info("Receiving focus")
 
     def defaultHandleLoseFocus(self,direction:Direction):
 
@@ -1383,7 +1537,7 @@ class Input(Item,FocusableClient):
         if self.has_border:
             self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_NORMAL))
             self.win.refresh()
-        self.logger.info("Input loosing focus")
+        self.logger.info("Loosing focus")
 
 
 
