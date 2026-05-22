@@ -9,7 +9,7 @@ from UI.types import ButtonBaseType,Coordinates,LayoutType,ButtonGlobalKeyType,B
 from pathlib import Path
 from UI.utils import CustomAdapter,root_logger_name,initialize_root_logger
 
-from UI.focus import FocusableClient,FocusManager,GlobalFocusManager
+from UI.misc import FocusableClient,FocusManager,GlobalFocusManager
 
 
 from UI.colors import DefaultColors
@@ -91,7 +91,7 @@ Screen holds layout components
 '''
 
 
-class Screen(Base,FocusableClient):
+class Screen(FocusableClient):
 
     terminal_window:curses.window
 
@@ -134,8 +134,14 @@ class Screen(Base,FocusableClient):
 
 
     #TODO check that it is layout
-    def add_layout(self,layout:"Layout"):
-        logger.info("Adding layout")
+    def add_layout(self, layout:"Layout"):
+
+        if not isinstance(layout,Layout):
+            raise Exception(f"Error: {layout} is not a layout")
+
+
+
+        self.logger.info("Adding layout")
         layout.screen = self
         
 
@@ -146,12 +152,6 @@ class Screen(Base,FocusableClient):
         if isinstance(layout,FocusableClient):
             self.logger.info("Adding Focusable Layout")
             self.focus.add_client(layout)
-
-
-
-        if isinstance(layout,FocusableLayout) or isinstance(layout,GlobalKeyLayout) :
-            self.logger.debug(f"Set reference of focus to {layout.class_name} {layout.id}")
-            # self.logger.debug("parent is not None?{}")
             layout.focus.focus_parent = self.focus
 
 

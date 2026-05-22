@@ -25,7 +25,7 @@ class Base(ABC):
         self.full_name = self._create_full_name()
         self.logger = CustomAdapter(root,{"class_full_name":self.full_name})
         self.parent:None | object = None
-        super().__init__(**kwargs)
+        # super().__init__(**kwargs)
 
 
     def _create_full_name(self):

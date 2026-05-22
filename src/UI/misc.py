@@ -19,11 +19,6 @@ class FocusManager:
 
     When the current pos exceeds the list boundaries, it requests to the parent focus manager to move
 
-
-
-
-
-
     """
 
 
@@ -216,7 +211,7 @@ class FocusManager:
         if self.spotlight != None:
             self.spotlight.handleGetFocus(direction)
 
-class FocusableClient(ABC):
+class FocusableClient(Base):
     """
     Anything that needs focus must inherit this class
     """
@@ -226,6 +221,10 @@ class FocusableClient(ABC):
 
         self.on_receive_focus:Callable | None = None
         self.on_lose_focus:Callable | None = None
+        self.focus:FocusableClient
+
+
+        super().__init__(**kwargs)
 
           
     def handleGetFocus(self,direction:Direction):
@@ -285,7 +284,7 @@ class GlobalFocusManager:
 
 
     @staticmethod
-    def get_parent_besides_child(client:"Base") ->list[tuple[object,object]]:
+    def get_parent_besides_child(client:"Base") ->list[tuple["Base","Base"]]:
         """
         To be able to easily call the focus manager to set the spotlight tahat needs to get it
         [(John.michael),(michael.michaelson)]
