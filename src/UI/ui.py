@@ -12,9 +12,6 @@ from UI.properties import Where,Padding,Push,Direction,Status
 from UI.types import ButtonBaseType,Coordinates,LayoutType,ButtonGlobalKeyType,BaseType,ItemAttributesType, ScreenType
 from pathlib import Path
 
-#TODO for tomorrow, make a distinction when a screen gets focus in the focusmanagers, like getting focus from within the screen or other screen
-
-
 filepath = Path(__file__).parent.parent.parent / "logs" / "TUI.log"
 print(filepath)
 
@@ -204,6 +201,20 @@ class GlobalFocusManager:
 
 
 class FocusManager:
+    """ 
+    In charge of giving focus to clients 
+
+    A client can receive focus when self.move(Direction) lands on that client or by specifically setting the focus with self.set_spotlight
+
+    When the current pos exceeds the list boundaries, it requests to the parent focus manager to move
+
+
+
+
+
+
+    """
+
 
     def __init__(self,class_name,id) -> None:
         self.clients:list["FocusableClient"]  = []
@@ -225,9 +236,6 @@ class FocusManager:
     def _get_class_name(self,class_name,id):
         id = id or ""
         return f"FocusManager({class_name})({id})"
-
-
-
 
     def __len__(self):
         """
@@ -361,12 +369,6 @@ class FocusManager:
         if len(self.clients ) >= 1:
             self.pos = (self.pos + power) % len(self.clients)
         
-        """
-        If we move passed  the edge and wind up in another layout
-        """
-        
-        walked_off_the_edge = False
-
         self.logger.debug(f"Has spotlight ? f{self.spotlight != None} and pos is {self.pos}")
         
         #Has moved passed the edge
@@ -375,19 +377,16 @@ class FocusManager:
             self.logger.debug(f"Has parent ?{self.focus_parent != None }")
 
             self.pos = 0
-
-            
-            
             if self.focus_parent != None:
                 self.focus_parent.move(direction)
-                walked_off_the_edge = True
+                return
 
         if direction == Direction.BACKWARD and previous_pos < self.pos:
             self.logger.debug("FocusManager: LEFT EDGE; We have moved passed the left edge")
             self.pos = len(self.clients) -1
             if self.focus_parent != None:
                 self.focus_parent.move(direction)
-                walked_off_the_edge = True
+                return
 
 
         #Manager has only 1 client so pos always is the same
@@ -395,32 +394,22 @@ class FocusManager:
             self.logger.debug("Previous pos == self.pos which means there is only 1 client in this focusmanager")
             if self.focus_parent != None:
                 self.focus_parent.move(direction)
-                walked_off_the_edge = True
+                return
      
-
-
     
 
         if len( self.clients ) >=1:
             self.spotlight = self.clients[self.pos]
 
 
-        """Not walking off the edge means still inside the boundaries of the current focusmanager """
-        if not walked_off_the_edge and self.spotlight != None:
+        if self.spotlight != None:
             self.spotlight.handleGetFocus(direction)
 
 
-    def forward(self):
-        self.move(Direction.FORWARD)
-
-
-
-    def backward(self):
-        self.move(Direction.BACKWARD)
-
-
-
 class FocusableClient(ABC):
+    """
+    Anything that needs focus must inherit this class
+    """
 
 
     def __init__(self, **kwargs:Unpack[BaseType]): 
@@ -428,15 +417,7 @@ class FocusableClient(ABC):
         self.on_receive_focus:Callable | None = None
         self.on_lose_focus:Callable | None = None
 
-        
-
-
-        
-
-        
-
-
-
+          
     def handleGetFocus(self,direction:Direction):
         self.defaultHandleGetFocus(direction)
         if self.on_receive_focus != None:
@@ -474,7 +455,6 @@ class ScreenHandler(Base):
         self.global_actions:dict[int,Callable] = {}
 
 
-        # self.logger = CustomAdapter(root,{"class_name":self.__class__.__name__})
         kwargs = {
                 "id":"root"
                 }
@@ -485,15 +465,9 @@ class ScreenHandler(Base):
 
     def add_screen(self,screen:"Screen"):
 
-        
-
-
         screen.parent = self
         self.focus.add_client(screen)
         self.logger.info(f"Add screen({screen.id})")
-
-    def removeLight(self):
-        self.spotlight = None
 
 
     def addAction(self,key: str | int,callable: Callable): # type: ignore
@@ -506,14 +480,6 @@ class ScreenHandler(Base):
         self.logger.info(f"Adding key {key}")
         self.global_actions[key] = callable
 
-    #
-    # def set_spotlight(self,screen:"Screen"):
-    #     self.focus.set_spotlight(screen)
-    #
-    #
-    # def set_spotlight_byid(self,id):
-    #     self.logger.debug(f"Set spotlight by id")
-    #     self.focus.set_spotlight_byid(id)
 
     def handleKey(self,c):
 
@@ -530,28 +496,17 @@ class ScreenHandler(Base):
 
 
 
-
-
-
 '''
 Glossary
-Focusable: means that it can receive focus and be the only thing that can receive input at the moment
+Focusable: means that it can receive focus and be the only thing that can receive input at the moment (Unless global keys intercept it)
 Global focus: When there are no focused items, global key listening is present (good for menus?)
 '''
 
 
 
 '''
-A screen creates a window that uses the whole screen and is responsible for holding layouts
-Screen determines which layout has focus
-The focused layout receives the keystroke
-The focused has a  bidirection traversal
-There is no global_keys for the screen, at least one layout forcefully needs spotlight but layouts dont need to be focusable necesarilly
+Screen holds layout components
 '''
-
-
-
-# class LayoutApi(Protocol):
 
 
 class Screen(Base,FocusableClient):
@@ -603,6 +558,7 @@ class Screen(Base,FocusableClient):
 
         layout.parent = self
 
+        #TODO allow decoration layouts
         
         if isinstance(layout,FocusableClient):
             self.logger.info("Adding Focusable Layout")
@@ -622,12 +578,7 @@ class Screen(Base,FocusableClient):
         Makes the layout spotlight handle_receiving_focus
         """
 
-        
-
         self.logger.info(f"Screen is about to show")
-
-
-        
 
         for client in self.focus.clients:
             layout = cast("Layout", client)
@@ -643,37 +594,6 @@ class Screen(Base,FocusableClient):
         self.screen_window.refresh()
 
 
-
-
-
-
-
-    # def set_spotlight(self,layout:"Layout"):
-    #
-    #
-    #     self.logger.info(f"set_spotlight is focusableitem {isinstance(layout,FocusableClient)}")
-    #
-    #     if isinstance(layout,FocusableClient):
-    #         status = self.focus.set_spotlight(layout)
-    #         if status == Status.ERR:
-    #             raise Exception("Error: Trying to set spotlight to layout that is not registered in clients.\nMake sure you set the spotlight after the layout has been added to the screen")
-    #
-    #         return
-    #
-    #
-    #     raise Exception("Error: Cannot set spotlight to a a layout that is not a focusableClient")
-            
-
-
-
-
-
-    def traverse(self,direction:Direction) :
-        """ 
-        """
-        self.focus.move(direction)
-
-    
 
     def handleKey(self,c):
 
@@ -699,13 +619,14 @@ class Layout(Base,ABC):
 
 
 
-        self.postponed_functions = []
-
         self.items:list["Item"] = [] 
         self.is_rendered = False
+        self.screen:Screen
+        self.registered_global_keys:Dict[int,Callable] = {}
+        self.spotlight:Item | None = None
 
-        #focusable
-        # self.traversal_index = -1
+
+        #RENDERING ATTRIBUTES
 
         self.axis = kwargs.get('axis') or 'horizontal'
         self.layout_window:curses.window
@@ -742,20 +663,6 @@ class Layout(Base,ABC):
         self.min_width = None
 
         self.default_border_padding = 2
-
-
-        self.screen:Screen
-
-
-
-        self.registered_global_keys:Dict[int,Callable] = {}
-        self.layout_kind = None
-        self.spotlight:Item | None = None
-
-
-        
-        
-        
 
         super().__init__(**kwargs)
 
@@ -849,6 +756,7 @@ class Layout(Base,ABC):
         maxY,maxX = win.getmaxyx()
 
         if (self.total_height + topy) >= maxY:
+            #TODO fix what happens when layout window exceeds the limits of the termial window, should terminal window be a pad? or no
             raise Exception("Dont worry, be happy")
 
         self.logger.debug(f"Deriving window heigth widh topy topx {self.total_height} {self.total_width} {topy} {topx} {self.screen.get_window()}")
@@ -860,10 +768,6 @@ class Layout(Base,ABC):
         )
 
         self.logger.debug("Deriving window finnished")
-
-
-
-
         self.logger.debug(f"layout_window size {layout_window.getmaxyx()}")
 
         return layout_window
@@ -881,9 +785,10 @@ class Layout(Base,ABC):
         self.layout_window.noutrefresh()
 
 
-    def show(
-        self,
-    ):
+    def show(self):
+        """
+        Paints itself and the items
+        """
         if not self.is_rendered:
             self.is_rendered = True
             self.render()
@@ -897,6 +802,7 @@ class Layout(Base,ABC):
         
 
 
+    #TODO make it easier to work with, maybe functionalize steps
     def render(self):
 
         self.logger.info(f"{'-'*10}RENDERING LAYOUT{'-'*10}")
@@ -977,17 +883,6 @@ class Layout(Base,ABC):
                     # padding.bottom
                     ])
 
-
-        
-        
-        
-
-        
-
-
-        
-        
-
         self.logger.info(f"{'-'*10}END RENDERING LAYOUT{'-'*10}")
     
 
@@ -1036,9 +931,6 @@ class Layout(Base,ABC):
             item.layout_api = self
             self.items.append(item)
 
-
-        
-
         return items[-1]
 
 
@@ -1083,8 +975,6 @@ class FocusableLayout(Layout,FocusableClient):
 
     def __init__(self, **kwargs:Unpack[LayoutType]) -> None:
         super().__init__(**kwargs)
-
-
         self.focus = FocusManager(self.class_name,self.id)
         
 
@@ -1095,14 +985,9 @@ class FocusableLayout(Layout,FocusableClient):
             if isinstance(item,FocusableClient):
                 self.focus.add_client(item)
 
-        
-
         if len(self.focus) <=0:
             raise Exception("Error:It doesnt make sense that focusablelayout has 0 focusableitems")
 
-
-        
-        
         return last_item
 
         
@@ -1112,22 +997,6 @@ class FocusableLayout(Layout,FocusableClient):
             return True,None
 
         return False, Exception(f"Item {item.__class__.__name__} is not compatible with Layout {self.__class__.__name__}")
-
-
-    # def set_spotlight(self,item:"Item"):
-    #
-    #     if not isinstance(item,FocusableClient):
-    #         raise Exception("Error: Trying to set spotlight to item that is not a FocusableClient")
-    #
-    #
-    #     if self.screen.visible:
-    #         self.focus.set_spotlight(item)
-    #
-    #     else:
-    #         # self.focus.spotlight = 
-    #         self.postponed_functions.append(lambda:self.focus.set_spotlight(item))
-
-
 
 
     def handleKey(self,c):
@@ -1150,6 +1019,11 @@ class FocusableLayout(Layout,FocusableClient):
 
     
     def defaultHandleGetFocus(self, direction: Direction):
+        """
+        When a layout gains focus from Forward or Backwards, the first or last item gain focus.
+        """
+
+        #TODO fix Direction.JUMP and Direction.SCREEN_JUMP they are weird , maybe remove Screen_JUMP
 
         super().handle_receive_focus(direction)
 
@@ -1219,6 +1093,7 @@ class GlobalKeyLayout(Layout,FocusableClient):
 
 
 
+#TODO implement it
 class DecorationLayout(Layout):
     """
     Layout that is not focusable , which means it cannot handle keys
@@ -1250,7 +1125,6 @@ class Item(Base,ABC):
     ) -> None:
 
         
-
         self.layout_api:Layout
 
         self.has_border = hasBorder
@@ -1363,11 +1237,6 @@ class Label(DecorationItem):
 
 
 
-
-
-
-
-
 class ButtonBase(Item):
     def __init__(self,text,**kwargs) -> None:
         self.length = len(text)
@@ -1378,16 +1247,10 @@ class ButtonBase(Item):
 
         super().__init__(**kwargs)
         
-
-
-
     def paint(self):
 
         self.paint_background()
         self.paint_insert_text_inside_border(self.text)
-
-
-        
 
 
     def getWin(self):
@@ -1398,16 +1261,9 @@ class ButtonBase(Item):
 
 
 
-
-
-
-
 class ButtonGlobalKey(ButtonBase,GlobalKeyItem):
 
     def __init__(self,**kwargs:Unpack[ButtonGlobalKeyType]) -> None:
-
-
-
 
         global_key_char = kwargs.get('global_key_char')
         text = len(kwargs.get('text'))
@@ -1432,12 +1288,6 @@ class ButtonGlobalKey(ButtonBase,GlobalKeyItem):
 
         pass
 
-
-    
-
-        
-
-
 class ButtonFocusable(ButtonBase,FocusableClient):
 
     def __init__(self,**kwargs:Unpack[ButtonBaseType]) -> None:
@@ -1447,8 +1297,6 @@ class ButtonFocusable(ButtonBase,FocusableClient):
         kwargs.setdefault("lines",1 )
         kwargs.setdefault("cols",len(text))
         super().__init__(**kwargs)
-
-
 
         self.logger.info("init")
         self.actions:dict = {} # type: ignore
@@ -1489,7 +1337,6 @@ class ButtonFocusable(ButtonBase,FocusableClient):
         if c in self.actions:
             self.actions[c]()
 
-
         self.logger.info(f"Buttonfocusable handling key {c}")
         
 
@@ -1497,7 +1344,7 @@ class ButtonFocusable(ButtonBase,FocusableClient):
 
 
 
-#TODO fix rendering
+#TODO fix rendering, without a border it seems to crash
 class Input(Item,FocusableClient):
     def __init__(self,**kwargs:Unpack[ItemAttributesType]) -> None:
 
@@ -1517,8 +1364,6 @@ class Input(Item,FocusableClient):
 
         super().__init__(**kwargs)
 
-
-    
 
     def defaultHandleGetFocus(self,direction:Direction):
 
@@ -1556,10 +1401,6 @@ class Input(Item,FocusableClient):
 
     def handleKey(self,c):
         self.logger.info(f"handling key in input {c}")
-
-        
-
-
 
 
         if c == curses.KEY_ENTER or c == ord("\n"):
