@@ -103,6 +103,7 @@ class Screen(FocusableClient):
         
         self.background = kwargs.pop("background",None)
         self.visible = False
+        self.layouts:list[Layout]  = []
         
 
         
@@ -143,9 +144,8 @@ class Screen(FocusableClient):
 
         self.logger.info("Adding layout")
         layout.screen = self
-        
-
         layout.parent = self
+        self.layouts.append(layout)
 
         #TODO allow decoration layouts
         
@@ -163,8 +163,7 @@ class Screen(FocusableClient):
 
         self.logger.info(f"Screen is about to show")
 
-        for client in self.focus.clients:
-            layout = cast("Layout", client)
+        for layout in self.layouts:
             layout.show()
 
 
@@ -320,7 +319,12 @@ class DecorationLayout(Layout):
     """
     Layout that is not focusable , which means it cannot handle keys
     """
+    def __init__(self, **kwargs: Unpack[LayoutType]) -> None:
+        super().__init__(**kwargs)
     pass
+
+    def validate_item(self, item: "Item") -> Tuple[bool, None | Exception]:
+        return True,None
 
 
 class DecorationItem(Item):
