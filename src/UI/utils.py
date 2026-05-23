@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 
 filepath = Path(__file__).parent.parent.parent / "logs" / "TUI.log"
-print(filepath)
 
 with open(filepath,"w+") as f:
     f.write("")

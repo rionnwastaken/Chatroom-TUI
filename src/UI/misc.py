@@ -221,7 +221,7 @@ class FocusableClient(Base):
 
         self.on_receive_focus:Callable | None = None
         self.on_lose_focus:Callable | None = None
-        self.focus:FocusableClient
+        self.focus:FocusManager
 
 
         super().__init__(**kwargs)
@@ -331,3 +331,17 @@ class GlobalFocusManager:
             return
 
         raise Exception("Error: client {client} is not registered in GlobalFocusManager")
+
+
+
+class ClientManager(Base):
+    def __init__(self, **kwargs) -> None:
+        self.clients:list[Base]  = []
+        # self.
+        super().__init__(**kwargs)
+
+
+    def add_client(self,client:Base):
+        pass
+
+

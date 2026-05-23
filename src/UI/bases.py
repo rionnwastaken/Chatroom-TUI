@@ -1,34 +1,48 @@
 import curses
-from typing import Callable, Dict,Literal, Tuple,TypedDict, Unpack
+from typing import Callable, Dict,Tuple,Unpack
 from abc import ABC, abstractmethod
 import logging
 
-from UI.properties import Where,Padding,Push,Direction,Status
-from UI.types import ButtonBaseType,Coordinates,LayoutType,ButtonGlobalKeyType,BaseType,ItemAttributesType, ScreenType
-from pathlib import Path
-from UI.utils import CustomAdapter,root_logger_name,initialize_root_logger
-from UI.colors import DefaultColors
+from UI.properties import Where,Padding,Push,Direction
+from UI.types import LayoutType,ItemAttributesType
+from UI.types import RenderAttributesType
+from UI.utils import CustomAdapter,root_logger_name
+from UI.colors import Color, DefaultColors
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from UI.ui import Screen
+    from UI.ui import Screen,Layout,Item
 
 root = logging.getLogger(root_logger_name)
 logger = CustomAdapter(root)
 
 
+defaultcolors = DefaultColors.get_instance()
+
+
 class Base(ABC):
     def __init__(self,**kwargs) -> None:
+
+
         self.id:object = kwargs.pop("id",None) 
         self.class_name = self.__class__.__name__
         self.full_name = self._create_full_name()
-        self.logger = CustomAdapter(root,{"class_full_name":self.full_name})
         self.parent:None | object = None
-        # super().__init__(**kwargs)
+
+
+        self.logger = CustomAdapter(root,{"class_full_name":self.full_name})
+
+        self.logger.debug(f"I am {type(self)}")
+
+
+        super().__init__(**kwargs)
 
 
     def _create_full_name(self):
+
+
+
         name = f"{self.class_name}"
         if self.id != None:
             name += f"({self.id})"
@@ -36,14 +50,121 @@ class Base(ABC):
         return name
 
 
-class Layout(Base,ABC):
+
+
+
+
+
+class RenderAttributes(Base,ABC):
+
+    def __init__(self,**kwargs:Unpack[RenderAttributesType]) -> None:
+        self.lines = kwargs.pop('lines', None)
+        self.cols = kwargs.pop('cols', None)
+        self.push  = kwargs.pop('push', Push())
+        self.padding  = kwargs.pop('padding', Padding())
+        self.hasBorder = kwargs.pop('hasBorder',False,)
+        self.background = kwargs.pop('background',None,)
+        self.background_focus = kwargs.pop('background_focus',None)
+        self.character_color = kwargs.pop('character_color',None)
+        self.min_width = kwargs.pop('min_width',None,)
+        self.max_width = kwargs.pop('max_width',None,)
+
+        self._default_background = kwargs.pop('default_background',None,)
+        self._default_background_focus = kwargs.pop('default_background_focus',None,)
+        self._color_level = kwargs.pop('color_level',None,)
+
+
+        if self.background == None:
+            self.background = self._default_background
+
+        if self.background_focus == None:
+            self.background_focus = self._default_background_focus
+
+        if isinstance(self.background,Color):
+            self.background = self.background * self._color_level
+
+
+        if isinstance(self.background_focus,Color):
+            self.background_focus = self.background_focus * self._color_level
+
+
+
+
+
+
+        
+        self.window:curses.window
+        super().__init__(**kwargs)
+
+
+
+    
+    def paint_normal_state(self,win):
+        if self.hasBorder:
+            self.window.box()
+
+
+        self.window.bkgd(" ",self.background)
+
+        self.window.refresh()
+
+    def render_attributes_default_get_focus(self,win):
+        if self.hasBorder:
+            self.window.box()
+
+        
+        self.window.bkgd(" ",self.background_focus)
+        self.window.refresh()
+
+
+    def render_attributes_default_lose_focus(self,win):
+        self.paint_normal_state(self.window)
+
+
+    def set_correct_background_value(self):
+
+        level = self.get_color_pair_level(
+            [(Screen, 1,), (Layout, 2,), (Item, 3,)],
+            self
+        )
+
+        if isinstance(self.background,Color):
+            self.background = self.background * level
+            return
+
+
+
+
+
+        if isinstance(self,Screen):
+            pass
+
+    def get_color_pair_level(self,classes:list[tuple[type,int]],clazz_to_compare:object):
+
+        for obj in classes:
+            clazz = obj[0]
+            if isinstance(clazz_to_compare,clazz):
+                return obj[1]
+
+
+
+class Layout(RenderAttributes,Base,ABC):
     ''' 
     A layout is a window that holds items
     It calculates the  required dimensions to fit the items
     Parent of FocusableLayout and GlobalKeyLayout
     Layout creates the derevied windows for the Items
     '''
+
+
     def __init__(self, **kwargs:Unpack[LayoutType]) -> None:
+
+
+        color_level = 2
+
+        kwargs.setdefault("color_level",color_level)
+        kwargs.setdefault("default_background_focus",defaultcolors.NORMAL_FOCUSED_BLUE * color_level)
+        kwargs.setdefault("default_background",defaultcolors.NORMAL * color_level)
 
 
 
@@ -51,29 +172,21 @@ class Layout(Base,ABC):
         self.is_rendered = False
         self.screen:Screen
         self.registered_global_keys:Dict[int,Callable] = {}
-        self.spotlight:Item | None = None
+
 
 
         #RENDERING ATTRIBUTES
 
-        self.axis = kwargs.get('axis') or 'horizontal'
-        self.layout_window:curses.window
+        self.axis = kwargs.pop('axis','horizontal')
 
-        self.hasBorder = kwargs.get('hasBorder') or False
-        self.background = kwargs.get('background') or DefaultColors.LAYOUT_NORMAL
-
-        self.padding = kwargs.get('padding') or Padding()
-        self.push = kwargs.get('push') or Push()
-
-        #Length,margins,padding everything
         self.total_width = 0 
         self.total_height = 0
 
         self.item_current_posx = 0
         self.item_current_posy = 0
 
-        self.where = kwargs.get('where')
-        self.coordinates = kwargs.get('coordinates')
+        self.where = kwargs.pop('where',None)
+        self.coordinates = kwargs.pop('coordinates',None)
 
         if self.coordinates != None:
             self.topx = self.coordinates["topx"]
@@ -87,12 +200,22 @@ class Layout(Base,ABC):
             raise Exception("Cannot use where and coordinates at the same time")
 
 
-        self.min_height = None
-        self.min_width = None
 
         self.default_border_padding = 2
 
+
+
+
+
+
         super().__init__(**kwargs)
+
+
+
+
+
+        
+
 
 
 
@@ -107,7 +230,7 @@ class Layout(Base,ABC):
         for item in self.items:
             item_lines,item_cols = item.get_total_space()
 
-            if item.has_border:
+            if item.hasBorder:
                 item_cols += self.default_border_padding
                 item_lines += self.default_border_padding
 
@@ -188,7 +311,7 @@ class Layout(Base,ABC):
             raise Exception("Dont worry, be happy")
 
         self.logger.debug(f"Deriving window heigth widh topy topx {self.total_height} {self.total_width} {topy} {topx} {self.screen.get_window()}")
-        layout_window = self.screen.get_window().derwin(
+        self.window = self.screen.get_window().derwin(
             self.total_height,
             self.total_width,
             topy,
@@ -196,21 +319,27 @@ class Layout(Base,ABC):
         )
 
         self.logger.debug("Deriving window finnished")
-        self.logger.debug(f"layout_window size {layout_window.getmaxyx()}")
+        self.logger.debug(f"layout_window size {self.window.getmaxyx()}")
 
-        return layout_window
+
+        return self.window
 
     def paint_layout(self):
 
         if self.hasBorder:
-            self.layout_window.box()
+            self.window.box()
 
 
-        if self.background != None:
-            self.logger.debug(f"Layout setting background {DefaultColors.LAYOUT_NORMAL}")
-            self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_NORMAL))
+        # if self.background == None:
+        #     self.logger.debug(f"Layout setting default background {defaultcolors.NORMAL * 1}")
+        #     self.window.bkgd(" ",defaultcolors.NORMAL * 1 )
+        #
+        # else:
+        self.logger.debug(f"Layout setting background {self.background}")
+        self.window.bkgd(" ",self.background)
 
-        self.layout_window.noutrefresh()
+
+        self.window.noutrefresh()
 
 
     def show(self):
@@ -242,15 +371,15 @@ class Layout(Base,ABC):
         self.item_current_posy = 0
 
         if len(self.items) <=0:
-            self.logger.debug(f"Layout has no items in screen")
-            self.layout_window = self._create_layout_window()
+            self.logger.debug("Layout has no items in screen")
+            self.window = self._create_layout_window()
             return
 
 
-        self.layout_window = self._create_layout_window()
+        self.window = self._create_layout_window()
         self.paint_layout()
 
-        if self.layout_window == None:
+        if self.window == None:
             raise Exception("Layout window is null")
 
 
@@ -261,7 +390,7 @@ class Layout(Base,ABC):
             margin = item.push
             padding = item.padding
 
-            border = self.default_border_padding if item.has_border else 0
+            border = self.default_border_padding if item.hasBorder else 0
 
             #Dont include margin, margin affects the posy
             win_lines = sum([
@@ -279,11 +408,11 @@ class Layout(Base,ABC):
 
                 
 
-            a  = self.layout_window.getmaxyx()
+            a  = self.window.getmaxyx()
             self.logger.debug(f"menuwin lines={a[0]} cols={a[1]}")
             self.logger.debug(f"itemwin lines={win_lines} cols={win_cols} posy={self.item_current_posy} posx={self.item_current_posx} ")
 
-            item_win:curses.window = self.layout_window.derwin(
+            item_win:curses.window = self.window.derwin(
                 win_lines,
                 win_cols,
                 self.item_current_posy,
@@ -374,65 +503,53 @@ class Layout(Base,ABC):
 
     def handle_receive_focus(self,from_where:Direction):
         """ Can be overriden to hook more functionality """
-        if self.hasBorder:
-            self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_FOCUSED))
-            self.layout_window.refresh()
+        self.render_attributes_default_get_focus(self.window)
         self.logger.debug("Layout receive focus")
 
 
     def handle_lose_focus(self,from_where:Direction):
         """ Can be overriden to hook more functionality """
-        if self.hasBorder:
-            self.layout_window.bkgd(" ",curses.color_pair(DefaultColors.LAYOUT_NORMAL))
-            self.layout_window.refresh()
+        self.render_attributes_default_lose_focus(self.window)
         self.logger.debug("Layout  losing focus")
 
 
 
     def hide(self):
-        self.layout_window.clear()
-        self.layout_window.refresh()
+        self.window.clear()
+        self.window.refresh()
 
 '''
 Item can hold anything, it only cares about its dimensions 
 Item is widget holder for example for labels ,inputs
 '''
-class Item(Base,ABC):
+class Item(RenderAttributes,Base,ABC):
 
     def __init__(
         self,
-        lines:int,
-        cols:int,
-        push = Push(),
-        padding = Padding(),
-        hasBorder=False,
-        background=None,
-        min_width=None,
-        max_width=None,
-        **kwargs
+        **kwargs:Unpack[ItemAttributesType]
     ) -> None:
+
+
+        color_level = 3
+        kwargs.setdefault("color_level",color_level)
+        kwargs.setdefault("default_background_focus",defaultcolors.NORMAL_FOCUSED_YELLOW * color_level)
+        kwargs.setdefault("default_background",defaultcolors.NORMAL_PURPLE * color_level)
 
         
         self.layout_api:Layout
 
-        self.has_border = hasBorder
-        self.background = background
-
-        self.lines = lines
-        self.cols = cols
-
-        self.push = push
-        self.padding = padding
-
-        self.win:curses.window
-
         super().__init__(**kwargs)
+
+        
+        
+
 
 
     def set_win(self,win:curses.window):
-        self.win = win
+        self.window = win
 
     def get_total_space(self) -> tuple[int,int]:
+        self.logger.info(f"self.lines is {self.lines}")
         lines = self.lines + self.push.bottom + self.push.top +  self.padding.top + self.padding.bottom
         cols = self.cols + self.push.right + self.push.left + self.padding.right + self.padding.left
 
@@ -440,29 +557,21 @@ class Item(Base,ABC):
 
     
     
-    def paint_background(self):
-        if self.background != None:
-            self.win.bkgd(" ", curses.color_pair(self.background))
 
+
+    def insert_text(self,text):
+
+        if not self.hasBorder:
+            self.window.insstr(0,0,text)
         else:
-            self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_NORMAL))
-
-    def paint_insert_text_inside_border(self,text):
-
-        if not self.has_border:
-            self.logger.info(f"self.win size {self.win.getmaxyx()} and length text = {len(text)}")
-            self.win.insstr(0,0,text)
-
-        else:
-            self.win.box()
-            self.win.addstr(1,1,text)
+            self.window.addstr(1,1,text)
 
 
 
     def paint_item(self):
         self.clear()
         self.paint()
-        self.win.noutrefresh()
+        self.window.noutrefresh()
 
     @abstractmethod
     def paint(self):
@@ -474,5 +583,5 @@ class Item(Base,ABC):
         
 
     def clear(self):
-        self.win.clear()
-        self.win.noutrefresh()
+        self.window.clear()
+        self.window.noutrefresh()

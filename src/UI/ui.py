@@ -13,7 +13,7 @@ from UI.misc import FocusableClient,FocusManager,GlobalFocusManager
 
 
 from UI.colors import DefaultColors
-from UI.bases import Base,Item,Layout
+from UI.bases import Base,Item,Layout, RenderAttributes
 
 
 
@@ -21,6 +21,8 @@ from UI.bases import Base,Item,Layout
 root = logging.getLogger(root_logger_name)
 logger = CustomAdapter(root)
 
+
+defaultcolors = DefaultColors.get_instance()
 
 
 '''
@@ -91,17 +93,22 @@ Screen holds layout components
 '''
 
 
-class Screen(FocusableClient):
+class Screen(RenderAttributes,FocusableClient):
 
-    terminal_window:curses.window
+    terminal_window:curses.window #stdsrc
 
     def __init__(self,**kwargs:Unpack[ScreenType]) -> None:
         term_lines,term_cols = Screen.terminal_window.getmaxyx() 
 
-        self.screen_window = curses.newwin(term_lines,term_cols,0,0)
+
+        color_level = 1
+        kwargs.setdefault("color_level",1)
+        kwargs.setdefault("default_background",defaultcolors.NORMAL)
+
+        self.window = curses.newwin(term_lines,term_cols,0,0)
 
         
-        self.background = kwargs.pop("background",None)
+        # self.background = kwargs.pop("background",None)
         self.visible = False
         self.layouts:list[Layout]  = []
         
@@ -111,26 +118,32 @@ class Screen(FocusableClient):
 
         super().__init__(**kwargs)
         self.focus = FocusManager(self.class_name,self.id)
+
+        self.logger.debug(f"SHak background is {self.background}")
         
 
     def get_screen_size(self):
-        return self.screen_window.getmaxyx()
+        return self.window.getmaxyx()
 
         
     def get_window(self):
-        return self.screen_window
+        return self.window
 
 
     def defaultHandleGetFocus(self, direction: Direction):
+
+        # self.render_attributes_default_get_focus(self.window)
         self.visible = True
         self.show()
 
 
 
     def defaultHandleLoseFocus(self, direction: Direction):
+
+        # self.render_attributes_default_get_focus(self.window)
         self.visible = False
-        self.screen_window.clear()
-        self.screen_window.refresh()
+        self.window.clear()
+        self.window.refresh()
 
 
 
@@ -155,6 +168,7 @@ class Screen(FocusableClient):
             layout.focus.focus_parent = self.focus
 
 
+
     def show(self):
         """
         Renders each layout
@@ -168,12 +182,12 @@ class Screen(FocusableClient):
 
 
         if self.background != None:
-            self.screen_window.bkgd(" ",curses.color_pair(self.background))
+            self.window.bkgd(" ",self.background)
 
 
 
         self.focus.set_spotlight_first(Direction.SCREEN_JUMP)
-        self.screen_window.refresh()
+        self.window.refresh()
 
 
 
@@ -358,7 +372,6 @@ class Label(DecorationItem):
     def __init__(self,text,**kwargs) -> None:
         self.length = len(text)
         self.text = text
-        self.win:curses.window
 
         kwargs.setdefault('cols',self.length)
         kwargs.setdefault('lines',1)
@@ -367,8 +380,9 @@ class Label(DecorationItem):
 
     def paint(self):
 
-        self.paint_background()
-        self.paint_insert_text_inside_border(self.text)
+
+        self.paint_normal_state(self.window)
+        self.insert_text(self.text)
 
 
 
@@ -377,19 +391,18 @@ class ButtonBase(Item):
         self.length = len(text)
         self.text = text
 
-        self.win:curses.window
         self.actions:list[Callable] = []
 
         super().__init__(**kwargs)
         
     def paint(self):
 
-        self.paint_background()
-        self.paint_insert_text_inside_border(self.text)
+        self.paint_normal_state(self.window)
+        self.insert_text(self.text)
 
 
     def getWin(self):
-        return self.win
+        return self.window
 
     def addAction(self,c:Callable):
         self.actions.append(c)
@@ -427,7 +440,9 @@ class ButtonFocusable(ButtonBase,FocusableClient):
 
     def __init__(self,**kwargs:Unpack[ButtonBaseType]) -> None:
 
-        text =  kwargs.get('text') 
+        text =  kwargs.get('text')
+
+        
 
         kwargs.setdefault("lines",1 )
         kwargs.setdefault("cols",len(text))
@@ -453,17 +468,14 @@ class ButtonFocusable(ButtonBase,FocusableClient):
 
     def defaultHandleGetFocus(self,direction:Direction):
 
-        if self.has_border:
-            self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_FOCUSED))
-            self.win.refresh()
-            self.logger.info("focusablebutton chaning color")
+
+        self.render_attributes_default_get_focus(self.window)
         self.logger.info("Receiving focus")
         
 
     def defaultHandleLoseFocus(self,direction:Direction):
-        if self.has_border:
-            self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_NORMAL))
-            self.win.refresh()
+
+        self.render_attributes_default_lose_focus(self.window)
         self.logger.info("Loosing focus")
 
 
@@ -487,7 +499,6 @@ class Input(Item,FocusableClient):
 
         self.filter = None
         self.length = kwargs.get('min_width')
-        self.win:curses.window
         self.cursorx = -1 if not kwargs.get('hasBorder') else 0
         self.cursory = 0 if not kwargs.get('hasBorder') else 1
         self.max_line,self.max_col = -1,-1
@@ -502,37 +513,27 @@ class Input(Item,FocusableClient):
 
     def defaultHandleGetFocus(self,direction:Direction):
 
-        self.win.move(self.cursory,self.cursorx)
-        self.win.refresh()
-
-        if self.has_border:
-            self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_FOCUSED))
-            self.win.refresh()
-            self.logger.info("Input changes color")
+        self.window.move(self.cursory,self.cursorx)
+        self.render_attributes_default_get_focus(self.window)
         self.logger.info("Receiving focus")
 
     def defaultHandleLoseFocus(self,direction:Direction):
 
-
-        if self.has_border:
-            self.win.bkgd(" ", curses.color_pair(DefaultColors.WIDGET_NORMAL))
-            self.win.refresh()
+        self.render_attributes_default_lose_focus(self.window)
         self.logger.info("Loosing focus")
 
 
 
 
     def paint(self):
-        self.paint_background()
+        self.paint_normal_state(self.window)
 
-        if self.has_border:
-            self.win.box()
-        self.max_line,self.max_col = self.win.getmaxyx()
+        self.max_line,self.max_col = self.window.getmaxyx()
         self.logger.info(f"info max_col es {self.max_col}")
 
 
     def getWin(self):
-        return self.win
+        return self.window
 
     def handleKey(self,c):
         self.logger.info(f"handling key in input {c}")
@@ -543,7 +544,7 @@ class Input(Item,FocusableClient):
         
         if c == curses.KEY_BACKSPACE:
 
-            if self.has_border:
+            if self.hasBorder:
                 if self.cursorx <= 0:
                     return
 
@@ -552,12 +553,12 @@ class Input(Item,FocusableClient):
             
             
 
-            self.win.move(self.cursory,self.cursorx)
-            self.win.addch(" ")
-            self.win.move(self.cursory,self.cursorx)
+            self.window.move(self.cursory,self.cursorx)
+            self.window.addch(" ")
+            self.window.move(self.cursory,self.cursorx)
             self.cursorx += -1
             
-            self.win.refresh()
+            self.window.refresh()
             return
 
 
@@ -576,7 +577,7 @@ class Input(Item,FocusableClient):
 
         self.cursorx += 1
 
-        if self.has_border:
+        if self.hasBorder:
             if self.cursorx >= self.max_col-2:
                 self.cursorx  = self.max_col -3
                 return
@@ -586,10 +587,10 @@ class Input(Item,FocusableClient):
             self.cursorx  = self.max_col -2
             return
 
-        self.win.move(self.cursory,self.cursorx)
-        self.win.addch(self.cursory,self.cursorx,c)
+        self.window.move(self.cursory,self.cursorx)
+        self.window.addch(self.cursory,self.cursorx,c)
         
-        self.win.refresh()
+        self.window.refresh()
 
 
 

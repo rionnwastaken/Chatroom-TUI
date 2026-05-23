@@ -1,15 +1,23 @@
 import curses
 from logging import Logger
 from UI.ui import ScreenHandler,Item,GlobalFocusManager
+from UI.utils import CustomAdapter,root_logger_name
+import logging
+from UI.bases import Base
 
 
-class ReusableActions():
+# root = logging.getLogger(root_logger_name)
+# logger = CustomAdapter(root)
 
 
-    def __init__(self,screenhandler:"ScreenHandler",logger:Logger) -> None:
-        self.screenhandler = screenhandler 
-        self.logger = logger
-        pass
+class ReusableActions(Base):
+
+    def __init__(self, **kwargs) -> None:
+        self.screenhandler = kwargs.pop("screenhandler")
+        super().__init__(**kwargs)
+
+    # def __init__(self,screenhandler:"ScreenHandler") -> None:
+    #     self.screenhandler = screenhandler 
 
 
     @staticmethod
@@ -49,7 +57,7 @@ class ReusableActions():
             if index >= len(colors):
                 index = 0
             color = colors[index]
-            win.bkgd(" ", curses.color_pair(color))
+            win.bkgd(" ", color)
             win.refresh()
         return inner
 

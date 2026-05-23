@@ -1,4 +1,5 @@
 from typing import TypedDict,Required,Literal
+from UI.colors import Color
 from UI.properties import Where,Padding,Push
 
 __all__ = ["Coordinates"]
@@ -13,25 +14,26 @@ class BaseType(TypedDict,total=False):
     id:str | None
 
 
-class LayoutType(BaseType,total=False):
-    coordinates:Coordinates | None
-    where:Where | None
-    hasBorder:bool
-    background:int
-    axis:Literal["horizontal","vertical"]
-    padding:Padding
-    push:Push
-
-
-class ItemAttributesType(BaseType,total=False):
+class RenderAttributesType(TypedDict,total=False):
      push:Push
      padding:Padding
      hasBorder:bool
-     background:int | None
-     lines:int
-     cols:int
+     background:int | None | Color
+     background_focus:int | None | Color
+     character_color:int | None  | Color
      min_width:int
      max_width:int
+
+
+class LayoutType(RenderAttributesType,BaseType,total=False):
+    coordinates:Coordinates | None
+    where:Where | None
+    axis:Literal["horizontal","vertical"]
+
+
+class ItemAttributesType(RenderAttributesType,BaseType,total=False):
+     lines:int
+     cols:int
 
 
 class ScreenType(BaseType,total=False):
