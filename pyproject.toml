@@ -25,7 +25,7 @@ path = ".venv"
 
 
 [tool.hatch.envs.default.scripts]
-exp = "hatch run python3 experiments/test.py"
+app = "hatch run python3 experiments/test.py"
 
 
 

@@ -6,8 +6,8 @@ import logging
 from UI.bases import Base
 
 
-# root = logging.getLogger(root_logger_name)
-# logger = CustomAdapter(root)
+root = logging.getLogger(root_logger_name)
+logger = CustomAdapter(root)
 
 
 class ReusableActions(Base):
@@ -16,8 +16,6 @@ class ReusableActions(Base):
         self.screenhandler = kwargs.pop("screenhandler")
         super().__init__(**kwargs)
 
-    # def __init__(self,screenhandler:"ScreenHandler") -> None:
-    #     self.screenhandler = screenhandler 
 
 
     @staticmethod
@@ -29,7 +27,7 @@ class ReusableActions(Base):
         def inner():
             nonlocal x
             # curses.curs_set(0)
-            win = btn.win
+            win = btn.window
             x = (x + 1) % len(cols)
             win.bkgd(" ", curses.color_pair(cols[x]))
             win.refresh()
@@ -41,7 +39,7 @@ class ReusableActions(Base):
     @staticmethod
     def changeColor2(btn: "Item", color: int ):
         def inner():
-            win = btn.win
+            win = btn.window
             win.bkgd(" ", curses.color_pair(color))
             win.refresh()
         return inner
@@ -51,7 +49,7 @@ class ReusableActions(Base):
         index = -1
         def inner():
             nonlocal index
-            win = btn.win
+            win = btn.window
 
             index += 1
             if index >= len(colors):
