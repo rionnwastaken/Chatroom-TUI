@@ -1,9 +1,9 @@
-from abc import ABC,abstractmethod
+from abc import abstractmethod
 import logging
-from UI.utils import CustomAdapter,root_logger_name,initialize_root_logger
-from UI.properties import Where,Padding,Push,Direction,Status
-from typing import Callable, Dict,Literal, Tuple,TypedDict,Protocol,Required,NotRequired, Unpack
-from UI.types import ButtonBaseType,Coordinates,LayoutType,ButtonGlobalKeyType,BaseType,ItemAttributesType, ScreenType
+from UI.utils import CustomAdapter,root_logger_name
+from UI.properties import Direction,Status
+from typing import Callable, Unpack
+from UI.types import BaseType
 from UI.bases import Base
 
 
@@ -179,7 +179,7 @@ class FocusManager:
         
         #Has moved passed the edge
         if direction == Direction.FORWARD and previous_pos > self.pos:
-            self.logger.debug(f"Moved passed RIGHT EDGE")
+            self.logger.debug("Moved passed RIGHT EDGE")
             self.logger.debug(f"Has parent ?{self.focus_parent != None }")
 
             self.pos = 0
@@ -278,7 +278,7 @@ class GlobalFocusManager:
 
         client = GlobalFocusManager.all_map.get(id,None)
         if client == None:
-            raise Exception(f"Screen not available")
+            raise Exception("Screen not available")
         GlobalFocusManager.set_spotlight(client)
 
 
@@ -332,16 +332,5 @@ class GlobalFocusManager:
 
         raise Exception("Error: client {client} is not registered in GlobalFocusManager")
 
-
-
-class ClientManager(Base):
-    def __init__(self, **kwargs) -> None:
-        self.clients:list[Base]  = []
-        # self.
-        super().__init__(**kwargs)
-
-
-    def add_client(self,client:Base):
-        pass
 
 
