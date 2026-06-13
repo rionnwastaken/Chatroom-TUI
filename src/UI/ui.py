@@ -535,6 +535,40 @@ class Input(Item,FocusableClient):
     def getWin(self):
         return self.window
 
+    def backspace(self):
+
+        if self.hasBorder:
+            if self.cursorx <= 0:
+                return
+
+        if self.cursorx < 0:
+            return
+        
+        
+
+        self.window.move(self.cursory,self.cursorx)
+        self.window.addch(" ")
+        self.window.move(self.cursory,self.cursorx)
+        self.cursorx += -1
+
+        self.text.pop(-1)
+        
+        self.window.refresh()
+        return
+
+    def should_skip(self,c):
+        if self.filter != None:
+            should_allow_key = self.filter(c)
+
+            if should_allow_key == False:
+                return True
+
+            elif should_allow_key:
+                return False
+
+            else:
+                raise Exception(f"Error in Input self.filter, it should return boolean but returned {type(should_allow_key)}")
+
     def handleKey(self,c):
         self.logger.info(f"handling key in input {c}")
 
@@ -543,46 +577,29 @@ class Input(Item,FocusableClient):
             return
         
         if c == curses.KEY_BACKSPACE:
+            self.backspace()
+            return
 
-            if self.hasBorder:
-                if self.cursorx <= 0:
-                    return
+        if c == curses.KEY_LEFT or c == curses.KEY_RIGHT:
+            return
 
-            if self.cursorx < 0:
-                return
-            
-            
-
-            self.window.move(self.cursory,self.cursorx)
-            self.window.addch(" ")
-            self.window.move(self.cursory,self.cursorx)
-            self.cursorx += -1
-            
-            self.window.refresh()
+        if self.should_skip(c):
             return
 
 
-        if self.filter != None:
-            should_allow_key = self.filter(c)
 
-            if should_allow_key == False:
-                return
-
-            elif should_allow_key:
-                pass
-
-            else:
-                raise Exception(f"Error in Input self.filter, it should return boolean but returned {type(should_allow_key)}")
 
 
         self.cursorx += 1
 
+        #Make sure cursor does not overlap with border
         if self.hasBorder:
             if self.cursorx >= self.max_col-2:
                 self.cursorx  = self.max_col -3
                 return
 
         
+        #Make sure not surpass max_col
         if self.cursorx >= self.max_col-1:
             self.cursorx  = self.max_col -2
             return
