@@ -1,5 +1,6 @@
 import curses
 from logging import Logger
+from UI.colors import Color
 from UI.ui import ScreenHandler,Item,GlobalFocusManager
 from UI.utils import CustomAdapter,root_logger_name
 import logging
@@ -45,7 +46,7 @@ class ReusableActions(Base):
         return inner
 
     @staticmethod
-    def changeColor3(btn: "Item", colors: list[int] ):
+    def changeColor3(btn: "Item", colors: list[int | Color] ):
         index = -1
         def inner():
             nonlocal index
@@ -55,6 +56,11 @@ class ReusableActions(Base):
             if index >= len(colors):
                 index = 0
             color = colors[index]
+
+            if isinstance(color,Color):
+                color = color * 1
+
+
             win.bkgd(" ", color)
             win.refresh()
         return inner
