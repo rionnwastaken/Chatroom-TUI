@@ -502,6 +502,8 @@ class Input(Item,FocusableClient):
         self.cursorx = -1 if not kwargs.get('hasBorder') else 0
         self.cursory = 0 if not kwargs.get('hasBorder') else 1
         self.max_line,self.max_col = -1,-1
+        self.text = []
+
         self.hide_characters = kwargs.pop("hide_characters",False)
 
         
@@ -514,12 +516,13 @@ class Input(Item,FocusableClient):
 
     def defaultHandleGetFocus(self,direction:Direction):
 
-        self.window.move(self.cursory,self.cursorx)
+        curses.curs_set(1)
+        self.window.move(self.cursory,self.cursorx + 1)
         self.render_attributes_default_get_focus(self.window)
         self.logger.info("Receiving focus")
 
     def defaultHandleLoseFocus(self,direction:Direction):
-
+        curses.curs_set(0)
         self.render_attributes_default_lose_focus(self.window)
         self.logger.info("Loosing focus")
 
@@ -613,7 +616,9 @@ class Input(Item,FocusableClient):
             self.cursorx  = self.max_col -2
             return
 
+
         c = self.get_character(c)
+
         self.window.addch(self.cursory,self.cursorx,c)
         self.text += chr(c)
         self.window.refresh()
@@ -625,6 +630,27 @@ class Input(Item,FocusableClient):
             return ord("*")
 
         return c
+
+
+    def getValue(self):
+        return "".join(self.text)
+
+
+    def setValue(self,text):
+
+
+        self.text.clear()
+        for c in text:
+            self.text.append(c)
+
+        self.cursorx = len(self.text) -1
+        if not self.is_rendered:
+            return
+
+
+        self.clear()
+        curses.doupdate()
+        self.paint()
 
 
 

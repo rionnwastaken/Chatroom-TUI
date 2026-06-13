@@ -73,6 +73,8 @@ class RenderAttributes(Base,ABC):
         self._default_background_focus = kwargs.pop('default_background_focus',None,)
         self._color_level = kwargs.pop('color_level',None,)
 
+        
+        self.is_rendered = False # Flag that is True whenwe show the screen
 
         if self.background == None:
             self.background = self._default_background
@@ -105,7 +107,6 @@ class RenderAttributes(Base,ABC):
 
 
         self.window.bkgd(" ",self.background)
-
         self.window.refresh()
 
     def render_attributes_default_get_focus(self,win):
@@ -354,6 +355,7 @@ class Layout(RenderAttributes,Base,ABC):
         self.paint_layout()
         for item in self.items:
             item.paint_item()
+            item.is_rendered = True
 
         curses.doupdate()
         
