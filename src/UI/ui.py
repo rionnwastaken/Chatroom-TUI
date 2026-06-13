@@ -5,7 +5,7 @@ import logging
 
 from typing import cast
 from UI.properties import Where,Padding,Push,Direction,Status
-from UI.types import ButtonBaseType,Coordinates,LayoutType,ButtonGlobalKeyType,BaseType,ItemAttributesType, ScreenType
+from UI.types import ButtonBaseType,Coordinates, InputType,LayoutType,ButtonGlobalKeyType,BaseType,ItemAttributesType, ScreenType
 from pathlib import Path
 from UI.utils import CustomAdapter,root_logger_name,initialize_root_logger
 
@@ -493,7 +493,7 @@ class ButtonFocusable(ButtonBase,FocusableClient):
 
 #TODO fix rendering, without a border it seems to crash
 class Input(Item,FocusableClient):
-    def __init__(self,**kwargs:Unpack[ItemAttributesType]) -> None:
+    def __init__(self,**kwargs:Unpack[InputType]) -> None:
 
         min_width = kwargs.setdefault('min_width',10)
 
@@ -502,6 +502,7 @@ class Input(Item,FocusableClient):
         self.cursorx = -1 if not kwargs.get('hasBorder') else 0
         self.cursory = 0 if not kwargs.get('hasBorder') else 1
         self.max_line,self.max_col = -1,-1
+        self.hide_characters = kwargs.pop("hide_characters",False)
 
         
         kwargs.setdefault('lines',1)
@@ -528,8 +529,16 @@ class Input(Item,FocusableClient):
     def paint(self):
         self.paint_normal_state(self.window)
 
+        if self.hide_characters:
+            self.insert_text("*" * len(self.text))
+
+        else:
+            self.insert_text("".join(self.text))
+
         self.max_line,self.max_col = self.window.getmaxyx()
         self.logger.info(f"info max_col es {self.max_col}")
+
+        self.window.refresh()
 
 
     def getWin(self):
@@ -604,10 +613,18 @@ class Input(Item,FocusableClient):
             self.cursorx  = self.max_col -2
             return
 
-        self.window.move(self.cursory,self.cursorx)
+        c = self.get_character(c)
         self.window.addch(self.cursory,self.cursorx,c)
-        
+        self.text += chr(c)
         self.window.refresh()
+
+
+    def get_character(self,c) -> int:
+
+        if self.hide_characters:
+            return ord("*")
+
+        return c
 
 
 

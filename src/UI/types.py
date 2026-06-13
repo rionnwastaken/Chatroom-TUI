@@ -36,6 +36,10 @@ class ItemAttributesType(RenderAttributesType,BaseType,total=False):
      cols:int
 
 
+class InputType(ItemAttributesType,total=False):
+    hide_characters:bool
+
+
 class ScreenType(BaseType,total=False):
     background:int | None
 
