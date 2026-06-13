@@ -30,6 +30,10 @@ Spotlight is the current screen that receives the input
 '''
 
 class ScreenHandler(Base):
+
+    instance = None
+
+
     def __init__(self,terminal_window) -> None:
         Screen.terminal_window = terminal_window
         self.terminal_window = terminal_window
@@ -45,6 +49,23 @@ class ScreenHandler(Base):
 
         super().__init__(**kwargs)
         self.focus = FocusManager(self.class_name,self.id)
+
+
+    @staticmethod
+    def get_screenHandler():
+        if ScreenHandler.instance == None:
+            raise Exception("Error: Can't obtain screenhandler before eventloop")
+
+        return ScreenHandler.instance 
+
+
+    @staticmethod
+    def init_screenHandler(terminal_window):
+        ScreenHandler.instance = ScreenHandler(terminal_window)
+        return ScreenHandler.instance
+
+
+
 
 
     def add_screen(self,screen:"Screen"):
