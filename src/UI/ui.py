@@ -13,7 +13,8 @@ from UI.misc import FocusableClient,FocusManager,GlobalFocusManager
 
 
 from UI.colors import DefaultColors
-from UI.bases import Base,Item,Layout, RenderAttributes
+from UI.bases import Base,Item,Layout
+
 
 
 
