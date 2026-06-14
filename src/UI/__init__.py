@@ -1,8 +1,10 @@
 from typing import Callable
+from UI.attributes import DefaultAttrbutes, DefaultAttributeManager
 from UI.colors import DefaultColors
+from UI.properties import Padding, Push
 from UI.utils import initialize_root_logger
 import curses
-from UI.ui import ScreenHandler
+from UI.ui import GlobalKeyLayout, Label, ScreenHandler,Item,Layout
 import time 
 import logging
 
@@ -24,6 +26,44 @@ def init_colors():
     defaultcolors.init_colors()
 
 
+def init_default_attributes():
+
+    defaultcolors = DefaultColors.get_instance()
+    DefaultAttributeManager.init_default_attrs(Item,DefaultAttrbutes(
+
+                    push=Push(),
+                    padding=Padding(),
+                    background=defaultcolors.NORMAL_PURPLE * Item.color_level,
+                    background_focus=defaultcolors.NORMAL_FOCUSED_YELLOW * Item.color_level,
+                    hasBorder=True
+
+        ))
+
+
+    DefaultAttributeManager.init_default_attrs(Layout,DefaultAttrbutes(
+
+                    push=Push(),
+                    padding=Padding(),
+                    background=defaultcolors.NORMAL * Layout.color_level,
+                    background_focus=defaultcolors.NORMAL_FOCUSED_BLUE * Layout.color_level,
+                    hasBorder=True
+
+        ))
+
+
+    DefaultAttributeManager.init_default_attrs(Label,DefaultAttrbutes(
+                    hasBorder=False
+        ))
+
+
+    DefaultAttributeManager.init_default_attrs(GlobalKeyLayout,DefaultAttrbutes(
+                    background=defaultcolors.NORMAL_GREEN * Layout.color_level
+        ))
+
+
+
+
+
 def event_loop(init_func:Callable):
 
     def main(stdsrc):
@@ -35,6 +75,7 @@ def event_loop(init_func:Callable):
         screenHandler =   ScreenHandler.init_screenHandler(stdsrc)
 
         init_colors()
+        init_default_attributes()
         init_func()
         while(1):
             start = time.perf_counter()

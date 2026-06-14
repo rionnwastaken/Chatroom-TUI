@@ -3,6 +3,8 @@ from typing import Callable, Dict,Tuple,Unpack
 from abc import ABC, abstractmethod
 import logging
 
+from UI.attributes import DefaultAttributeManager, RenderAttributes
+from UI.properties import Where,Padding,Push,Direction
 from UI.properties import Where,Padding,Push,Direction
 from UI.types import LayoutType,ItemAttributesType
 from UI.types import RenderAttributesType
@@ -78,7 +80,7 @@ class Layout(RenderAttributes,Base,ABC):
         color_level = 2
 
         kwargs.setdefault("color_level",color_level)
-        kwargs.setdefault("default_background_focus",defaultcolors.NORMAL_FOCUSED_BLUE * color_level)
+        DefaultAttributeManager.set(Layout,kwargs)
         kwargs.setdefault("color_level",Layout.color_level)
 
 
@@ -447,7 +449,7 @@ class Item(RenderAttributes,Base,ABC):
 
 
         kwargs.setdefault("color_level",Item.color_level)
-        kwargs.setdefault("default_background_focus",defaultcolors.NORMAL_FOCUSED_YELLOW * color_level)
+        DefaultAttributeManager.set(Item,kwargs)
         kwargs.setdefault("default_background",defaultcolors.NORMAL_PURPLE * color_level)
 
         

@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 import logging
 
 from typing import cast
+from UI.attributes import DefaultAttributeManager, RenderAttributes
 from UI.properties import Where,Padding,Push,Direction,Status
 from UI.types import ButtonBaseType,Coordinates, InputType,LayoutType,ButtonGlobalKeyType,BaseType,ItemAttributesType, ScreenType
 from pathlib import Path
@@ -306,6 +307,9 @@ class GlobalKeyLayout(Layout,FocusableClient):
 
 
     def __init__(self, **kwargs:Unpack[LayoutType]) -> None:
+
+        DefaultAttributeManager.set(GlobalKeyLayout,kwargs)
+
         super().__init__(**kwargs)
         
         self.focus = FocusManager(self.class_name,self.id)
@@ -394,6 +398,9 @@ class Label(DecorationItem):
     def __init__(self,text,**kwargs) -> None:
         self.length = len(text)
         self.text = text
+
+        DefaultAttributeManager.set(Label,kwargs)
+
 
         kwargs.setdefault('cols',self.length)
         kwargs.setdefault('lines',1)
@@ -521,8 +528,6 @@ class Input(Item,FocusableClient):
 
         self.filter = None
         self.length = kwargs.get('min_width')
-        self.cursorx = -1 if not kwargs.get('hasBorder') else 0
-        self.cursory = 0 if not kwargs.get('hasBorder') else 1
         self.max_line,self.max_col = -1,-1
         self.text = []
 
@@ -535,6 +540,8 @@ class Input(Item,FocusableClient):
 
         super().__init__(**kwargs)
 
+        self.cursorx = -1 if not self.hasBorder else 0
+        self.cursory = 0 if not self.hasBorder else 1
 
     def defaultHandleGetFocus(self,direction:Direction):
 

@@ -84,3 +84,90 @@ class RenderAttributes():
             clazz = obj[0]
             if isinstance(clazz_to_compare,clazz):
                 return obj[1]
+
+
+class DefaultAttrbutes(RenderAttributes):
+    def __init__(self, **kwargs: Unpack[RenderAttributesType]) -> None:
+        super().__init__(**kwargs)
+
+
+    def set_default_attributes(self,kwargs:RenderAttributesType):
+        """Only set default  attributes is None"""
+
+        if  kwargs.get("background") == None:
+            kwargs['background'] = self.background
+
+
+        if  kwargs.get("background_focus") == None:
+            kwargs["background_focus"] = self.background_focus
+
+        if  kwargs.get("character_color") == None:
+            kwargs["character_color"] = self.character_color
+
+        if  kwargs.get("hasBorder") == None:
+            kwargs["hasBorder"] = self.hasBorder
+
+        if  kwargs.get("padding") == None:
+            kwargs["padding"] = self.padding
+
+
+        if  kwargs.get("push") == None:
+            kwargs["push"] = self.push
+
+
+        logger.info("Printing kwargs")
+        logger.info(str(kwargs))
+
+        return kwargs
+
+    def merge(self,other:"DefaultAttrbutes"):
+        if other.background != None:
+            self.background = other.background
+
+        if other.background_focus != None:
+            self.background_focus = other.background_focus
+
+        if other.background_focus != None:
+            self.background_focus = other.background_focus
+
+
+        if  other.character_color != None:
+            self.character_color = other.character_color
+
+        if  other.hasBorder != None:
+            self.hasBorder = other.hasBorder
+
+        if  other.padding != None:
+            self.padding = other.padding
+
+
+        if  other.push != None:
+            self.push = other.push
+
+
+
+
+
+
+
+class DefaultAttributeManager:
+
+    instances:dict[object,DefaultAttrbutes] = {}
+
+
+    @staticmethod
+    def init_default_attrs(clazz:object,defaultAttributes:DefaultAttrbutes):
+        if DefaultAttributeManager.instances.get(clazz,None):
+            instance = DefaultAttributeManager.instances.get(clazz)
+            assert instance != None
+            instance.merge(defaultAttributes)
+        else:
+            DefaultAttributeManager.instances[clazz] = defaultAttributes
+
+    @staticmethod
+    def set(clazz:object,kwargs):
+        if not DefaultAttributeManager.instances.get(clazz,None):
+            raise Exception(f"Error: Must call init before set, class {clazz}")
+
+        default_attributes = DefaultAttributeManager.instances[clazz]
+        default_attributes.set_default_attributes(kwargs)
