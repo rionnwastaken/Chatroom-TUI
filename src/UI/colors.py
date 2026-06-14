@@ -104,6 +104,7 @@ class DefaultColors(ColorCreator):
         self.NORMAL_FOCUSED_YELLOW =  self.pair(curses.COLOR_YELLOW,-1)
         self.NORMAL = self.pair(curses.COLOR_WHITE,-1)
         self.NORMAL_PURPLE = self.pair(curses.COLOR_MAGENTA,-1)
+        self.NORMAL_GREEN = self.pair(curses.COLOR_GREEN,-1)
 
         self.NORMAL_FOCUSED_BLUE = self.pair(curses.COLOR_BLUE,-1)
 
